@@ -25,9 +25,9 @@ If dependency tree is needed, run following command under `/hw1`.
 $ ./parse_to_dt.py
 ```
 
-* Normal sentences
+Normal sentences
 - Time consumed is about `2 mins`.
 
-* Dependency tree
+Dependency tree
 - Memory usage is about `2 GB`.
 - Time consumed is about `40 mins`.
