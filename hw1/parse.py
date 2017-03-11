@@ -85,6 +85,5 @@ if __name__ == '__main__':
         with open(args.output_dir+"/"+file_name[21:-5]+".txt",'w') as of:
           Parse(f, of, args.dependency_tree, args.quote_split)
         sys.stderr.write('finished parsing file ' + file_name[:-1] + '\n')
-      break
   if args.dependency_tree:
     os.remove('tmp')
