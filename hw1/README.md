@@ -22,7 +22,12 @@ Then, parsed sentences will be in `/hw1/Training_Data/`.
 
 If dependency tree is needed, run following command under `/hw1`.
 ```
-$ ./parse_to_dt.py
+$ ./parse.py -d
+```
+
+More flexible options can be found by running
+```
+$ ./parse.py -h
 ```
 
 Normal sentences
