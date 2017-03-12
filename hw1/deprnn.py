@@ -3,18 +3,20 @@ import argparse
 import sys
 import numpy as np
 import tensorflow as tf
+from collections import Counter
 
 #default values
-default_wordvec_src = 1
+default_wordvec_src = -1
 default_vocab_size = 10
 default_hidden_size = 100
-default_rnn_type = 1
+default_layer_num = 1
+default_rnn_type = 0
 default_use_dep = True
 default_learning_rate = 0.1
 default_max_grad_norm = 100
 default_max_epoch = 1000
 default_keep_prob = 1.0
-default_batch_size = 128
+default_batch_size = 2
 default_data_mode = 2
 default_data_dir = './toy_data/'
 
@@ -37,13 +39,15 @@ def restricted_float(x):
 parser = argparse.ArgumentParser(description=\
     'Dependency-tree-based rnn for MSR sentence completion challenge.')
 parser.add_argument('--wordvec_src', type=int, default=default_wordvec_src, nargs='?', \
-    choices=range(0, 7), \
-    help='Decide the source of wordvec -->\
+    choices=range(-1, 7), \
+    help='Decide the source of wordvec --> [-1:debug-mode], \
     [0:one-hot], [1:glove.6B.50d], [2:glove.6B.100d], \
     [3:glove.6B.200d], [4:glove.6B.300d], [5:glove.42B], \
-    [6:glove.840B]. (default:{})'.format(default_wordvec_src))
+    [6:glove.840B]. (default:%d)'%default_wordvec_src)
 parser.add_argument('--vocab_size', type=int, default=default_vocab_size, nargs='?', \
     help='The vocabulary size to be trained. (default:%d)'%default_vocab_size)
+parser.add_argument('--layer_num', type=int, default=default_layer_num, nargs='?', \
+    help='Number of rnn layer.. (default:%d)'%default_layer_num)
 parser.add_argument('--rnn_type', type=int, default=default_rnn_type, nargs='?', \
     choices=range(0, 3), \
     help='Type of rnn cell --> [0:Basic], [1:LSTM], [2:GRU]. (default:%d)'\
@@ -52,7 +56,7 @@ parser.add_argument('--learning_rate', type=float, default=default_learning_rate
     nargs='?', help='Value of initial learning rate. (default:%r)'\
     %default_learning_rate)
 parser.add_argument('--max_grad_norm', type=float, default=default_max_grad_norm, \
-    nargs='?', help='Value of maximum gradient norm allowed. (default:%r)'\
+    nargs='?', help='Maximum gradient norm allowed. (default:%r)'\
     %default_max_grad_norm)
 parser.add_argument('--use_dep', type=t_or_f, default=default_use_dep, nargs='?', \
     choices=[False, True], \
@@ -76,41 +80,99 @@ parser.add_argument('--data_dir', type=str, default=default_data_dir, nargs='?',
 
 args = parser.parse_args()
 
-#decide embedding dimension
-if args.wordvec_src == 0: args.embed_dim = args.vocab_size
-elif args.wordvec_src == 1: args.embed_dim = 50
-elif args.wordvec_src == 2: args.embed_dim = 100
-elif args.wordvec_src == 3: args.embed_dim = 200
-elif args.wordvec_src == 4: args.embed_dim = 300
-elif args.wordvec_src == 5: args.embed_dim = 300
-elif args.wordvec_src == 6: args.embed_dim = 300
+#decide embedding dimension and vocabulary size
+if args.wordvec_src == -1:
+  args.embed_dim = 50
+  args.vocab_size = 10
+elif args.wordvec_src == 0:
+  args.embed_dim = args.vocab_size
+elif args.wordvec_src == 1:
+  args.embed_dim = 50
+  args.vocab_size = 400000
+elif args.wordvec_src == 2:
+  args.embed_dim = 100
+  args.vocab_size = 400000
+elif args.wordvec_src == 3:
+  args.embed_dim = 200
+  args.vocab_size = 400000
+elif args.wordvec_src == 4:
+  args.embed_dim = 300
+  args.vocab_size = 400000
+elif args.wordvec_src == 5:
+  args.embed_dim = 300
+  args.vocab_size = 1917494
+elif args.wordvec_src == 6:
+  args.embed_dim = 300
+  args.vocab_size = 2196017
 else: assert(False)
 
-#load in pre-trained word embedding
-W_E = tf.Variable(tf.constant(0.0, shape=[args.vocab_size, args.embed_dim]),
-                trainable=False, name="W_E")
-embed_placeholder = tf.placeholder(tf.float32, [args.vocab_size, args.embed_dim])
-embed_init = W_E.assign(embed_placeholder)
+print(args)
 
-# ...
-#sess = tf.Session()
-#sess.run(embedding_init, feed_dict={embedding_placeholder: embedding})
-sys.exit(0)
+def read_data(data_dir):
+  with open(data_dir+'wordlist.txt', 'r') as f:
+    words = f.read().splitlines()
+  word_to_id = dict(zip(words, range(len(words))))
+  w_e = np.load(data_dir+'wordvec.npy', 'r')
+  with open(data_dir+'train_data.txt', 'r') as f:
+    data = f.read().replace("\n", "<eos>").split()
+  data = [word_to_id[word] if word in word_to_id else 1 for word in data]
+  return data
 
-class PTBInput(object):
-  """The input data."""
+def reader(data, para):
+  with tf.name_scope(name, "reader", [data, para.batch_size, num_steps]):
+    raw_data = tf.convert_to_tensor(raw_data, name="raw_data", dtype=tf.int32)
 
-  def __init__(self, config, data, name=None):
-    self.batch_size = batch_size = config.batch_size
-    self.num_steps = num_steps = config.num_steps
-    self.epoch_size = ((len(data) // batch_size) - 1) // num_steps
-    self.input_data, self.targets = reader.ptb_producer(
-        data, batch_size, num_steps, name=name)
+    data_len = tf.size(raw_data)
+    batch_len = data_len // batch_size
+    data = tf.reshape(raw_data[0 : batch_size * batch_len],
+                      [batch_size, batch_len])
 
-class PTBModel(object):
-  """The PTB model."""
+    epoch_size = (batch_len - 1) // num_steps
+    assertion = tf.assert_positive(epoch_size,
+        message="epoch_size == 0, decrease batch_size or num_steps")
+    with tf.control_dependencies([assertion]):
+      epoch_size = tf.identity(epoch_size, name="epoch_size")
 
-  def __init__(self, is_training, config, input_):
+    i = tf.train.range_input_producer(epoch_size, shuffle=False).dequeue()
+    x = tf.strided_slice(data, [0, i * num_steps],
+                         [batch_size, (i + 1) * num_steps])
+    x.set_shape([batch_size, num_steps])
+    y = tf.strided_slice(data, [0, i * num_steps + 1],
+                         [batch_size, (i + 1) * num_steps + 1])
+    y.set_shape([batch_size, num_steps])
+    return x, y
+
+class DepRNN(object):
+  """The deprnn language model"""
+
+  def __init__(self, args):
+    para = args
+
+    #build model
+    if para.rnn_type == 0:#basic rnn
+      def unit_cell():
+        return tf.contrib.rnn.BasicRNNCell(para.hidden_size, activation=tf.tanh)
+    else:#TODO (LSTM and GRU)
+      assert(False)
+    rnn_cell = unit_cell
+    if para.keep_prob < 1:#TODO (dropout layer)
+      assert(False)
+
+    cell = tf.contrib.rnn.MultiRNNCell([rnn_cell() for _ in range(para.layer_num)], \
+        state_is_tuple=True)
+    self._initial_state = cell.zero_state(para.batch_size, tf.float32)
+
+    #load in pre-trained word embedding
+    with tf.device('/cpu:0'):
+      wordvec = np.load(para.data_dir+'wordvec.npy')
+      W_E = tf.Variable(tf.constant(0.0, shape=[para.vocab_size, para.embed_dim]),
+          trainable=False, name="W_E")
+      embedding = tf.placeholder(tf.float32, [para.vocab_size, para.embed_dim])
+      embed_init = W_E.assign(embedding)
+      #inputs = tf.nn.embedding_lookup(W_E,
+    sys.exit(0)
+
+  def tmp_init(self, is_training, config, input_):
     self._input = input_
 
     batch_size = input_.batch_size
@@ -149,8 +211,7 @@ class PTBModel(object):
     # The alternative version of the code below is:
     #
     # inputs = tf.unstack(inputs, num=num_steps, axis=1)
-    # outputs, state = tf.nn.rnn(cell, inputs,
-    #                            initial_state=self._initial_state)
+    # outputs,state = tf.nn.rnn(cell, inputs, initial_state=self._initial_state)
     outputs = []
     state = self._initial_state
     with tf.variable_scope("RNN"):
@@ -315,5 +376,8 @@ def main(_):
         print("Saving model to %s." % FLAGS.save_path)
         sv.saver.save(session, FLAGS.save_path, global_step=sv.global_step)
 
-if __name__ == "__main__":
-  tf.app.run()
+#with tf.Graph().as_default():
+  #sv = tf.train.Supervisor(logdir='./logs')
+  #with sv.managed_session() as sess:
+read_data(args.data_dir)
+DepRNN(args)
