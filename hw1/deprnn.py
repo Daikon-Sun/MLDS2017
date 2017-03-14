@@ -111,17 +111,51 @@ elif args.wordvec_src == 6:
   args.embed_dim = 300
   args.vocab_size = 2196017
 else: assert(False)
+'''
+def get_batch(raw_data, b_id, para, name=None):
 
+  print('b_id = %r\n' % b_id)
+  #batch_data = raw_data[b_id:b_id+para.batch_size]
+
+  with tf.name_scope(name, "batch", [raw_data, para, b_id]):
+    tmp = tf.convert_to_tensor(raw_data, name='raw_data', dtype=tf.int32)
+    #get seq_len for dynamic_rnn and max_seq_len for zero-padding
+    seq_len = [ len(sent) for sent in batch_data ]
+    max_len = max(seq_len)
+
+    #zero-padding
+    for rw in batch_data: rw.extend([0]*(max_len-len(rw)))
+
+    #reshape to size: batch_size * max_seq_len
+    batch = np.array(batch_data).reshape((para.batch_size, max_len))
+
+    batch_x = batch[:, :-1]
+    x = tf.stack([tf.convert_to_tensor(bx, dtype=tf.int32) for bx in batch_x], name='x')
+    batch_y = batch[:, 1:]
+    y = tf.stack([tf.convert_to_tensor(by, dtype=tf.int32) for by in batch_y], name='y')
+
+    return x, y, seq_len
+'''
+def get_single_example(args):
+  filename = args.data_dir+'/data.tfr'
+  f_queue = tf.train.string_input_producer([filename], num_epochs=None)
+  reader = tf.TFRecordReader()
+
+  _, serialized_example = reader.read(f_queue)
+
+  feature = tf.parse_single_example(serialized_example, \
+    features={\
+      'train': tf.VarLenFeature(tf.int64), \
+      'sqlen': tf.FixedLenFeature([1], tf.int64)})
+  return feature['train'], feature['sqlen'][0]
+'''
 class data_manager(object):
-  """data manager for deprnn"""
   def __init__(self, args):
-    self._batch_id = 0
     self._para = args
 
     with open(self._para.data_dir+'wordlist.txt', 'r') as f:
       words = f.read().splitlines()
     word_to_id = dict(zip(words, range(len(words))))
-    w_e = np.load(self._para.data_dir+'wordvec.npy', 'r')
     with open(self._para.data_dir+'train_data.txt', 'r') as f:
       raw_data = f.read().splitlines()
 
@@ -129,41 +163,25 @@ class data_manager(object):
     self._epoch_size = self._sent_num // self._para.batch_size
     raw_data = [ sent.split() for sent in raw_data ]
 
+    seq_len = np.array([ len(sent) for sent in raw_data ])
+    np.save('toy_data/seq_len', seq_len)
+
+
+    self._batch_id = tf.train.range_input_producer(self._epoch_size, \
+        shuffle=False).dequeue()
     #id of <unk> = 0
     self._raw_data = [ [word_to_id[word] if word in word_to_id else 0 for word in sent]\
         for sent in raw_data]
-
-  def get_batch(self, name=None):
-    batch_data = self._raw_data[self._batch_id:self._batch_id+self._para.batch_size]
-    self._batch_id += 1
-    if self._batch_id == self._sent_num:
-      self._batch_id = 0
-
-    with tf.name_scope(name, "batch", [batch_data, self._para, self._batch_id]):
-
-      #get seq_len for dynamic_rnn and max_seq_len for zero-padding
-      self._seq_len = [ len(sent) for sent in batch_data ]
-      max_len = max(self._seq_len)
-
-      #zero-padding
-      for rw in batch_data: rw.extend([0]*(max_len-len(rw)))
-
-      #reshape to size: batch_size * max_seq_len
-      batch = np.array(batch_data).reshape((self._para.batch_size, max_len))
-
-      batch_x = batch[:, :-1]
-      x = tf.stack([tf.convert_to_tensor(bx, dtype=tf.int32) for bx in batch_x], name='x')
-      batch_y = batch[:, 1:]
-      y = tf.stack([tf.convert_to_tensor(by, dtype=tf.int32) for by in batch_y], name='y')
-
-      return x, y, self._seq_len
-
+    #np.save('toy_data/data.npy', np.array(self._raw_data))
+    #sys.exit()
+    #get batch_x and batch_y
+    self._batch_x, self._batch_y, self._seq_len = \
+        get_batch(self._raw_data, self._batch_id, self._para)
+'''
 class DepRNN(object):
-  """The deprnn language model"""
 
-  def __init__(self, is_training, para, inputs):
+  def __init__(self, is_training, para):
     self._para = para
-    self._inputs = inputs
 
     #build model
     if self._para.rnn_type == 0:#basic rnn
@@ -191,16 +209,25 @@ class DepRNN(object):
         [self._para.vocab_size, self._para.embed_dim])
     self._embed_init = W_E.assign(self._embedding)
 
-    x, y, seq_len = self._inputs.get_batch()
-    inputs = tf.nn.embedding_lookup(W_E, x)
+    one_sent, sq_len = get_single_example(self._para)
+    batch, seq_len = tf.train.batch([one_sent, sq_len], batch_size=self._para.batch_size, \
+        dynamic_pad=True)
+    batch = tf.sparse_tensor_to_dense(batch)
+    self._seq_len = seq_len = tf.to_int32(seq_len)
 
+    #reshape to size: batch_size * max_seq_len
+
+    batch_x = batch[:, :-1]
+    batch_y = batch[:, 1:]
+
+    inputs = tf.nn.embedding_lookup(W_E, batch_x)
 
     if is_training and self._para.keep_prob < 1:#TODO (dropout layer on input)
       assert(False)
 
     #use dynamic_rnn to build dynamic time-step rnn
-    outputs, state = tf.nn.dynamic_rnn(cell, inputs, sequence_length=seq_len, \
-        dtype=tf.float32)
+    outputs, state = tf.nn.dynamic_rnn(cell, inputs, \
+        sequence_length=seq_len, dtype=tf.float32)
     output = tf.reshape(tf.concat(outputs, 1), [-1, self._para.hidden_size])
     with tf.variable_scope('softmax'):
       softmax_w = tf.get_variable('w', [self._para.hidden_size, self._para.vocab_size], \
@@ -208,9 +235,11 @@ class DepRNN(object):
       softmax_b = tf.get_variable('b', [self._para.vocab_size], dtype=tf.float32)
 
     logits = tf.matmul(output, softmax_w)+softmax_b
+    #print('logits = %r\n' % logits)
+    #print('r_max = %r\n' % self._para.batch_size*(tf.reduce_max(seq_len)-1))
     loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([logits], \
-        [tf.reshape(y, [-1])], \
-        [tf.ones([self._para.batch_size*(max(seq_len)-1)], dtype=tf.float32)])
+        [tf.reshape(batch_y, [-1])], \
+        [tf.ones([(tf.reduce_max(seq_len)-1)*self._para.batch_size], dtype=tf.float32)])
     self._cost = cost = tf.reduce_sum(loss) / self._para.batch_size
     self._final_state = state
 
@@ -224,11 +253,8 @@ class DepRNN(object):
     self._train_op = optimizer.apply_gradients(zip(grads, tvars), \
         global_step=tf.contrib.framework.get_or_create_global_step())
 
-  #def assign_lr(self, session, lr_value):
-  #  session.run(self._lr_update, feed_dict={self._new_lr: lr_value})
-
   @property
-  def input(self): return self._inputs
+  def seq_len(self): return self._seq_len
   @property
   def initial_state(self): return self._initial_state
   @property
@@ -258,9 +284,9 @@ def run_epoch(sess, model, eval_op=None, verbose=False):
   if eval_op is not None:
     fetches["eval_op"] = eval_op
 
-  for step, sent_size in enumerate(model.input._seq_len):
+  for step, sent_size in enumerate(sess.run(model._seq_len)):
     fd_dct = {}
-    print('initial state', model.initial_state)
+    #print('initial state', model.initial_state)
     for i, (c, h) in enumerate(model.initial_state):
       fd_dct[c] = state[i].c
       fd_dct[h] = state[i].h
@@ -283,12 +309,12 @@ with tf.Graph().as_default():
   initializer = tf.random_uniform_initializer(-args.init_scale, args.init_scale)
 
   with tf.name_scope("Train"):
-    trn_data = data_manager(args)
+    #trn_data = data_manager(args)
     with tf.variable_scope('model', reuse=None, initializer=initializer):
-      deprnn = DepRNN(is_training=True, para=args, inputs=trn_data)
+      deprnn = DepRNN(is_training=True, para=args)
 
-  #sv = tf.train.Supervisor(logdir='./logs/')
-  with tf.Session() as sess:
+  sv = tf.train.Supervisor(logdir='./logs/')
+  with sv.managed_session() as sess:
     for i in range(args.max_epoch):
       #print("Epoch: %d Learning rate: %.3f" % (i + 1, sess.run(deprnn.lr)))
       train_perplexity = run_epoch(sess, deprnn, \
