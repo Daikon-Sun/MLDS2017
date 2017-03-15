@@ -50,8 +50,3 @@ with open(args.file_list,'r') as file_list:
         }))
         serialized = example.SerializeToString()
         writer.write(serialized)
-
-
-
-      with open(args.output_dir+"/"+file_name[:-5]+".txt",'w') as of:
-        sys.stderr.write('finished parsing file ' + file_name[:-1] + '\n')
