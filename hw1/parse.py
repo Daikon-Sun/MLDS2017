@@ -2,8 +2,6 @@
 import argparse
 import re, string
 import os, sys
-import spacy
-from nltk import Tree
 
 # Generating dependency tree
 def to_nltk_tree(node):
@@ -29,11 +27,15 @@ def valid(sentence):
   return True
   
 # Parse the given content into dependency trees
-def Parse(f, of, dependency_tree, quote_split):
+def Parse(f, of, dependency_tree, quote_split, comma_split):
   content = re.sub('\n|\r', ' ', ''.join( i for i in f ))
-  content = re.split('[.!?;\'\"]+' if quote_split else '[.!?;]+', content)
-  for sentence in content:
-    sent = re.sub(r'[^[a-zA-Z0-9 \']]*', '', re.sub(r' +', ' ', sentence))
+  content = re.sub('[,]',' , ',content)
+  target = '.!?;\'\"' if quote_split else '.!?;'
+  if comma_split: target += ','
+  for cc in target:
+    content = re.sub('['+cc+']',' '+cc+'\n', content)
+  for sentence in content.split('\n'):
+    sent = re.sub('[^A-Za-z0-9\s\',.!?;]', '', re.sub('\s+', ' ', sentence))
     if not valid(sent): continue
     if dependency_tree:
       for sent in en_nlp(sent.lower()).sents:
@@ -68,9 +70,16 @@ if __name__ == '__main__':
         help='Sentences will be split between quotation marks (\'\'\',\'\"\')'
              ' (default: split only by {\'.\',\'!\',\'?\',\';\'}).',
         action='store_true')
+  argparser.add_argument('-c', '--comma_split',
+        help='Sentences will also be split between comma.'
+             ' (default: it won\'t split between comma).',
+        action='store_false')
+  argparser.set_defaults(comma_split=False)
   args = argparser.parse_args()
 
   if args.dependency_tree:
+    import spacy
+    from nltk import Tree
     sys.stderr.write('loading lauguage parser...\n')
     # English language parser
     en_nlp = spacy.load('en')
@@ -83,7 +92,7 @@ if __name__ == '__main__':
       with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
         sys.stderr.write('start parsing file ' + file_name[:-1] + '\n')
         with open(args.output_dir+"/"+file_name[21:-5]+".txt",'w') as of:
-          Parse(f, of, args.dependency_tree, args.quote_split)
+          Parse(f, of, args.dependency_tree, args.quote_split, args.comma_split)
         sys.stderr.write('finished parsing file ' + file_name[:-1] + '\n')
   if args.dependency_tree:
     os.remove('tmp')
