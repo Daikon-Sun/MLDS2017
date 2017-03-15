@@ -12,7 +12,7 @@ argparser.add_argument('-o', '--output_dir',
   type=str, default='Training_Data_tfr',
   help='OUTPUT_DIR is the directory where the output files will be '
        'stored in. (default: %(default)s)',)
-argparser.add_argument('-v,' '--vocab',
+argparser.add_argument('-v' '--vocab',
   type=str,
   help='VOCAB is a file which give each word a distinct id')
 argparser.set_defaults(comma_split=False)
