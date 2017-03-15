@@ -10,12 +10,20 @@ if len(sys.argv) < 3:
 sys.stderr.write('*** Seperate pre-trained word vectors from GloVe ***\n')
 
 with open("glove." + sys.argv[1] + "B." + sys.argv[2] + "d.txt",'r') as glove:
-  with open("pretrained_word_list.txt",'w') as word_list:
+  with open("vocab_" + sys.argv[1] + "B_" + sys.argv[2] + "_d.txt",'w') as word_list:
     words = glove.read().split()
     dimension = int(sys.argv[2])
     counter = 0
     wordnum = 0
     arr = []
+
+    # unknown vocab
+    word_list.write("<unk>\n")
+    arr.append([])
+    for i in range(dimension):
+      arr[wordnum].append(float(0))
+    wordnum = wordnum + 1
+
     for w in words:
       if counter == 0:
         word_list.write(w + "\n")
@@ -29,4 +37,4 @@ with open("glove." + sys.argv[1] + "B." + sys.argv[2] + "d.txt",'r') as glove:
       else:
         counter = 0
         arr[wordnum - 1].append(float(w))
-    np.save("pretrained_word_vectors_" + sys.argv[1] + "d",np.array(arr))
+    np.save("wordvec_" + sys.argv[1] + "B_" + sys.argv[2] + "_d",np.array(arr))
