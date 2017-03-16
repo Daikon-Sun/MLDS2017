@@ -14,8 +14,6 @@ def to_nltk_tree(node):
 
 # Check whether given sentence is a valid English sentence
 def valid(sentence):
-  if len(sentence.split()) < 3:
-    return False
   for word in sentence.split():
     if not all(c in string.printable for c in word):
       return False
@@ -29,7 +27,8 @@ def valid(sentence):
   return True
   
 # Parse the given content into dependency trees
-def Parse(f, writer, dependency_tree, quote_split, comma_split):
+def Parse(f, writer, dependency_tree, quote_split, comma_split,
+          min_words, max_words):
   content = re.sub('\n|\r', ' ', ''.join( i for i in f ))
   content = re.sub('[,]',' , ',content)
   target = '.!?;\"' if quote_split else '.!?;'
@@ -57,12 +56,48 @@ def Parse(f, writer, dependency_tree, quote_split, comma_split):
           else:
             corpus[ word ] = 1
       else:
+        if len(sent) < min_words or len(sent) > max_words: continue
         words_id = []
         for word in sent.lower().split():
-          if word in vocab_table:
-            words_id.append(vocab_table[word])
-          else:
-            words_id.append(0)
+          words_id.append(0 if word not in vocab_table else vocab_table[word])
+        global unk_words
+        global total_words
+        unk_words += sum(1 if i == 0 else 0 for i in words_id)
+        total_words += len(words_id)
+        example = tf.train.Example(
+          features=tf.train.Features(
+            feature={
+              'content': tf.train.Feature(
+                int64_list=tf.train.Int64List(value=words_id)),
+              'len': tf.train.Feature(
+                int64_list=tf.train.Int64List(value=[len(words_id)]))}))
+        serialized = example.SerializeToString()
+        writer.write(serialized)
+
+def Parse_testing(f, writer, dependency_tree):
+  for question in f:
+    ret = question.split(',')
+    if ret[0] == 'id':
+      continue
+    sent = ''
+    for token in ret[1:-5]:
+      if len(sent) > 0:
+        sent += ','
+      sent += token
+    for choice in ret[-5:]:
+      cand = re.sub('_____', choice, sent)
+      for cc in '.!?;,':
+        cand = re.sub('['+cc+']',' '+cc+' ', cand)
+      cand = re.sub('[\']',' \'', cand)
+      cand = re.sub('[^A-Za-z0-9\s\',.!?;]', '', cand)
+      if dependency_tree:
+        pass
+      else:
+        if args.debug:
+          sys.stderr.write(cand + '\n')
+        words_id = []
+        for word in cand.lower().split():
+          words_id.append(0 if word not in vocab_table else vocab_table[word])
         example = tf.train.Example(
           features=tf.train.Features(
             feature={
@@ -85,15 +120,34 @@ if __name__ == '__main__':
         type=str, default='training_list',
         help='FILE_LIST is the file storing the file names of training datas.'
              ' (default: %(default)s)')
+  argparser.add_argument('-t', '--testing_data',
+        type=str, default='testing_data.csv',
+        help='TESTING_DATA is the file containing testing data.'
+             ' (default: %(default)s)')
   argparser.add_argument('-g', '--glove_file',
-        type=str, default='glove.6B.50d.txt',
+        type=str, default='data/glove.6B.50d.txt',
         help='GLOVE_FILE is the file containning glove data.'
              'Should be in the format of glove.#B.#d.txt'
              ' (default: %(default)s)')
   argparser.add_argument('-o', '--output_dir',
         type=str, default='Training_Data',
-        help='OUTPUT_DIR is the directory where the output files will be '
+        help='OUTPUT_DIR is the directory where the '
+             'output files of training datas will be '
              'stored in. (default: %(default)s)',)
+  argparser.add_argument('-of', '--output_file',
+        type=str, default='testing_data.tfr',
+        help='OUTPUT_FILE is the TFRecorder file from '
+             'testing data (default: %(default)s)',)
+  argparser.add_argument('-mi', '--min_words',
+        type=int, default=4,
+        help='If the sentence has less than MIN_WORDS words, '
+             'it won\'t be taken into consideration.(Marks also count)'
+             '(default: %(default)s)',)
+  argparser.add_argument('-ma', '--max_words',
+        type=int, default=100,
+        help='If the sentence has more than MAX_WORDS words, '
+             'it won\'t be taken into consideration.(Marks also count)'
+             '(default: %(default)s)',)
   argparser.add_argument('-q', '--quote_split',
         help='Sentences will be split between quotation marks (\'\"\')'
              ' (default: split only by {\'.\',\'!\',\'?\',\';\'}).',
@@ -116,13 +170,14 @@ if __name__ == '__main__':
 
   corpus = dict()
 
-  sys.stderr.write('start parsing...\n')
+  sys.stderr.write('start parsing training datas...\n')
   with open(args.file_list,'r') as file_list:
     for file_name in file_list:
       with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
         if args.debug:
           sys.stderr.write('start parsing file ' + file_name[:-1] + '\n')
-        Parse(f, None, args.dependency_tree, args.quote_split, args.comma_split)
+        Parse(f, None, args.dependency_tree, args.quote_split, args.comma_split,
+              args.min_words, args.max_words)
         if args.debug:
           sys.stderr.write('finished parsing file ' + file_name[:-1] + '\n')
   if args.dependency_tree:
@@ -147,7 +202,8 @@ if __name__ == '__main__':
       np.save(wordvec_name,np.array(res))
       sys.stderr.write('number of useful words : %d\n' % (len(res)))
       
-  sys.stderr.write('start transforming into the format of TFRecoder file...\n')
+  sys.stderr.write('start transforming training datas'
+                   ' into the format of TFRecoder files...\n')
   vocab_table = dict()
   vocab_table_idx = 0
   with open(vocab_name,'r') as vocab:
@@ -155,12 +211,24 @@ if __name__ == '__main__':
       vocab_table[w[:-1]] = vocab_table_idx
       vocab_table_idx = vocab_table_idx + 1
 
+  global unk_words
+  global total_words
+  unk_words, total_words = 0, 0
   with open(args.file_list,'r') as file_list:
     for file_name in file_list:
       with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
         if args.debug:
           sys.stderr.write('start converting file ' + file_name[:-1] + '\n')
         writer = tf.python_io.TFRecordWriter(args.output_dir+'/'+file_name[21:-5]+'.tfr')
-        Parse(f, writer, args.dependency_tree, args.quote_split, args.comma_split)
+        Parse(f, writer, args.dependency_tree, args.quote_split, args.comma_split,
+              args.min_words, args.max_words)
+  sys.stderr.write('unk_words: %d, total_words: %d, perc: %f%%\n' %
+                   (unk_words, total_words, unk_words * 100 / total_words))
+
+  sys.stderr.write('start transforming testing data '
+                   'into the format of TFRecoder file...\n')
+  with open(args.testing_data,'r',encoding="utf-8",errors='ignore') as f:
+    writer = tf.python_io.TFRecordWriter(args.output_file)
+    Parse_testing(f, writer, args.dependency_tree)
 
   sys.stderr.write('cooling down...\n')
