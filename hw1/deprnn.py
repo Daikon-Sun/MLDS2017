@@ -76,28 +76,31 @@ parser.add_argument('--data_dir', type=str, default=default_data_dir, nargs='?',
 args = parser.parse_args()
 
 #decide embedding dimension and vocabulary size
+wordvec = np.load(args.data_dir+'wordvec.npy')
+vocab = open(args.data_dir+'vocab.txt', 'r').read().splitlines()
+if len(vocab) != wordvec.shape[0]:
+  raise RuntimeError('different numbers of vocabs and vectors!')
 if args.wordvec_src == 0:
   args.embed_dim = 50
-  args.vocab_size = 12
+  args.vocab_size = wordvec.shape[0]
 elif args.wordvec_src == 1:
-  wordvec = np.load(args.data_dir+'testing.npy')
   args.embed_dim = 50
   args.vocab_size = wordvec.shape[0]
 elif args.wordvec_src == 2:
   args.embed_dim = 100
-  args.vocab_size = 400001
+  args.vocab_size = wordvec.shape[0]
 elif args.wordvec_src == 3:
   args.embed_dim = 200
-  args.vocab_size = 400001
+  args.vocab_size = wordvec.shape[0]
 elif args.wordvec_src == 4:
   args.embed_dim = 300
-  args.vocab_size = 400001
+  args.vocab_size = wordvec.shape[0]
 elif args.wordvec_src == 5:
   args.embed_dim = 300
-  args.vocab_size = 1917495
+  args.vocab_size = wordvec.shape[0]
 elif args.wordvec_src == 6:
   args.embed_dim = 300
-  args.vocab_size = 2196018
+  args.vocab_size = wordvec.shape[0]
 else: assert(False)
 
 def is_train(mode): return mode == 0
@@ -267,7 +270,6 @@ def run_epoch(sess, model, mode):
   return np.exp(costs/iters)
 
 with tf.Graph().as_default():
-
   initializer = tf.random_uniform_initializer(-args.init_scale, args.init_scale)
 
   #mode: 0->train, 1->valid, 2->test
