@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 from collections import Counter
 import copy
+import csv
 
 #default values
 default_wordvec_src = 1
@@ -94,7 +95,8 @@ args.vocab_size = wordvec.shape[0]
 #load in file list for training and validation
 filenames = open(args.data_dir+'file_list.txt', 'r').read().splitlines()
 filenames = [ args.data_dir+ff for ff in filenames ]
-filenames = [filenames[:default_train_num], filenames[default_train_num:], ['test.tfr']]
+filenames = [filenames[:default_train_num], filenames[default_train_num:],\
+    ['testing_data.tfr']]
 
 #decide embedding dimension
 args.embed_dim = [50, 50, 100, 200, 300, 300, 300][args.wordvec_src]
@@ -176,7 +178,7 @@ class DepRNN(object):
     batch_y = batch[:, 1:]
 
     #if testing, need to know the word ids
-    if is_test(args.mode): self._target = batch_y
+    if is_test(para.mode): self._target = batch_y
 
     #word_id to vector
     inputs = tf.nn.embedding_lookup(W_E, batch_x)
@@ -266,17 +268,15 @@ def run_epoch(sess, model, args):
       target = vals['target']
 
       #shape of choices = 5 x (len(sentence)-1)
-      choices = np.array([[prob[j*5, target[j, k]]\
-          for j in range(len(target.shape[1]))] for k in range(5)])
+      choices = np.array([[prob[j*5, target[k, j]]\
+          for j in range(target.shape[1])] for k in range(5)])
 
       best.append(chr(ord('a')+np.argmax(np.prod(choices, axis=1))))
-      print(best)
 
       #print(np.array(prob).shape)
       costs += cost
       iters += 1
     return best
-
 
 with tf.Graph().as_default():
   initializer = tf.random_uniform_initializer(-args.init_scale, args.init_scale)
@@ -315,5 +315,5 @@ with tf.Graph().as_default():
     with open('submission/basic_lstm.csv', 'w') as f:
       wrtr = csv.writer(f)
       wrtr.writerow(['id', 'answer'])
-      for i in range(0, 1050):
+      for i in range(0, 1040):
         wrtr.writerow([i+1, result[i]])
