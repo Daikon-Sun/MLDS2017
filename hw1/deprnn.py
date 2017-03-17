@@ -17,10 +17,10 @@ default_hidden_size = 256
 default_init_scale = 0.001
 default_keep_prob = 0.5
 default_layer_num = 3
-default_learning_rate = 0.001
+default_learning_rate = 0.0005
 default_rnn_type = 1
 default_max_grad_norm = 30
-default_max_epoch = 1#200
+default_max_epoch = 400
 default_num_sampled = 2000
 default_optimizer = 4
 default_train_num = 522
@@ -108,6 +108,7 @@ assert( len(vocab) == wordvec.shape[0])
 
 #decide vocab_size and embed_dim
 args.vocab_size, args.embed_dim = wordvec.shape
+print(wordvec.shape)
 
 #load in file list for training and validation
 filenames = open(args.data_dir+'file_list.txt', 'r').read().splitlines()
@@ -151,7 +152,7 @@ class DepRNN(object):
             state_is_tuple=True)
     elif para.rnn_type == 3:#GRU
       def unit_cell():
-        return tf.contrib.rnn.GRUCell(para.hidden_size, state_is_tuple=True)
+        return tf.contrib.rnn.GRUCell(para.hidden_size)
 
     rnn_cell = unit_cell
 
@@ -210,12 +211,8 @@ class DepRNN(object):
         softmax_b = tf.get_variable('b', [para.vocab_size], dtype=tf.float32)
 
       logits = tf.matmul(output, tf.transpose(softmax_w))+softmax_b
-
       self._prob = tf.nn.softmax(logits)
 
-      #loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([logits],\
-      #    [tf.reshape(batch_y, [-1])],\
-      #    [tf.ones([(tf.reduce_max(seq_len)-1)*para.batch_size], dtype=tf.float32)])
     else:
       with tf.variable_scope('softmax'):
         softmax_w = tf.get_variable('w', [para.vocab_size, para.hidden_size],\
@@ -247,8 +244,6 @@ class DepRNN(object):
   def prob(self): return self._prob
   @property
   def target(self): return self._target
-  #@property
-  #def tmp(self): return self._tmp
 
 def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
@@ -286,8 +281,12 @@ def run_epoch(sess, model, args):
       target = vals['target']
 
       #shape of choices = 5 x (len(sentence)-1)
-      choices = np.array([[prob[k*5+j, target[k, j]]\
+      choices = np.array([[prob[k*target.shape[1]+j, target[k, j]]\
           for j in range(target.shape[1])] for k in range(5)])
+      np.set_printoptions(threshold=np.nan)
+      print(target)
+      print(choices)
+      print('-'*80)
 
     return chr(ord('a')+np.argmax(np.sum(np.log(choices), axis=1)))
 
