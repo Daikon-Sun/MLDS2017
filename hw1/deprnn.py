@@ -25,7 +25,7 @@ default_num_sampled = 2000
 default_optimizer = 4
 default_train_num = 522
 default_use_dep = False
-default_wordvec_src = 1
+default_wordvec_src = 4
 optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,\
     tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,\
     tf.train.AdamOptimizer, tf.train.RMSPropOptimizer]
@@ -60,7 +60,7 @@ parser.add_argument('--num_sampled', type=int, default=default_num_sampled, narg
     %default_num_sampled)
 parser.add_argument('--optimizer', type=int, default=default_optimizer, nargs='?',\
     choices=range(0, 6),\
-    help='Optimzers --> [0: GradientDescent], [1:Adadelta], [2:Adagrad],\
+    help='Optimizers --> [0: GradientDescent], [1:Adadelta], [2:Adagrad],\
     [3:Momentum], [4:Adam], [5:RMSProp]. (default:%d)'%default_optimizer)
 parser.add_argument('--rnn_type', type=int, default=default_rnn_type, nargs='?',\
     choices=range(0, 4),\
@@ -98,8 +98,9 @@ parser.add_argument('--data_dir', type=str, default=default_data_dir, nargs='?',
 args = parser.parse_args()
 
 #load in pre-trained word embedding and vocabulary list
-wordvec = np.load(args.data_dir+'wordvec.npy')
-vocab = open(args.data_dir+'vocab.txt', 'r').read().splitlines()
+src_name = ['toy_data', '6B.50d', '6B.100d', '6B.200d', '6B.300d', '42B', '840B']
+wordvec = np.load('data/wordvec.'+src_name[args.wordvec_src]+'.npy')
+vocab = open('data/vocab.'+src_name[args.wordvec_src]+'.txt', 'r').read().splitlines()
 assert( len(vocab) == wordvec.shape[0])
 
 #decide vocab_size and embed_dim
@@ -125,8 +126,8 @@ def get_single_example(para):
 
   feature = tf.parse_single_example(serialized_example,\
     features={\
-      'content': tf.VarLenFeature(tf.int64),\
-      'len': tf.FixedLenFeature([1], tf.int64)})
+        'content': tf.VarLenFeature(tf.int64),\
+        'len': tf.FixedLenFeature([1], tf.int64)})
   return feature['content'], feature['len'][0]
 
 class DepRNN(object):
@@ -174,6 +175,7 @@ class DepRNN(object):
     one_sent, sq_len = get_single_example(para)
     batch, seq_len = tf.train.batch([one_sent, sq_len],\
         batch_size=para.batch_size, dynamic_pad=True)
+
     #sparse tensor cannot be sliced
     batch = tf.sparse_tensor_to_dense(batch)
 
