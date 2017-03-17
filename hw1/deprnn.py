@@ -214,7 +214,7 @@ class DepRNN(object):
     masks = tf.mulitply(tf.ones([(max_seq_len-1)*para.batch_size]), masks)
 
     loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([logits],\
-        [tf.reshape(batch_y, [-1])], [masks], dtype=tf.float32)])
+        [tf.reshape(batch_y, [-1])], [masks], dtype=tf.float32)
         #[tf.ones([(tf.reduce_max(seq_len)-1)*para.batch_size], dtype=tf.float32)])
 
     self._cost = cost = tf.reduce_mean(loss)
