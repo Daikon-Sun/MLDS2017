@@ -10,15 +10,15 @@ import copy
 import csv
 
 #default values
-default_wordvec_src = 2
+default_wordvec_src = 1
 default_hidden_size = 256
-default_layer_num = 4
+default_layer_num = 3
 default_rnn_type = 1
 default_use_dep = False
 default_learning_rate = 0.001
 default_init_scale = 0.001
 default_max_grad_norm = 25
-default_max_epoch = 2
+default_max_epoch = 5
 default_keep_prob = 0.3
 default_batch_size = 300
 default_data_dir = './Training_Data'+str(default_wordvec_src)+'/'
@@ -54,7 +54,8 @@ parser.add_argument('--wordvec_src', type=int, default=default_wordvec_src, narg
     [6:glove.840B]. (default:%d)'%default_wordvec_src)
 parser.add_argument('--layer_num', type=int, default=default_layer_num, nargs='?',\
     help='Number of rnn layer. (default:%d)'%default_layer_num)
-parser.add_argument('--optimizer', type=int, default=default_layer_num, nargs='?',\
+parser.add_argument('--optimizer', type=int, default=default_optimizer, nargs='?',\
+    choices=range(0, 6),\
     help='Optimzers --> [0: GradientDescent], [1:Adadelta], [2:Adagrad],\
     [3:Momentum], [4:Adam], [5:RMSProp]. (default:%d)'%default_optimizer)
 parser.add_argument('--rnn_type', type=int, default=default_rnn_type, nargs='?',\
