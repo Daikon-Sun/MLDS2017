@@ -125,7 +125,10 @@ def Parse_testing(f, writer, dependency_tree):
         cand = re.sub('['+cc+']',' '+cc+' ', cand)
       cand = re.sub('[\']',' \'', cand)
       cand = re.sub('[^A-Za-z0-9\s\',.!?;]', '', cand)
-      if dependency_tree:
+      if writer is None:
+        for word in cand.lower().split():
+          corpus_testing[ word ] = 1  
+      elif dependency_tree:
         global counter
         counter = 0
         for sent in en_nlp(cand.lower()).sents:
@@ -182,6 +185,12 @@ if __name__ == '__main__':
         type=str, default='testing_data.tfr',
         help='OUTPUT_FILE is the TFRecorder file from '
              'testing data (default: %(default)s)',)
+  argparser.add_argument('-c', '--count',
+        type=int, default=16,
+        help='If the occurrence of a word is less than COUNT'
+             'it won\'t be taken into consideration.'
+             '(Words in testing data is always counted.)'
+             '(default: %(default)s)',)
   argparser.add_argument('-mi', '--min_words',
         type=int, default=4,
         help='If the sentence has less than MIN_WORDS words, '
@@ -196,7 +205,7 @@ if __name__ == '__main__':
         help='Sentences will be split between quotation marks (\'\"\')'
              ' (default: split only by {\'.\',\'!\',\'?\',\';\'}).',
         action='store_true')
-  argparser.add_argument('-c', '--comma_split',
+  argparser.add_argument('-co', '--comma_split',
         help='Sentences will also be split between comma.'
              ' (default: it won\'t split between comma).',
         action='store_true')
@@ -213,8 +222,9 @@ if __name__ == '__main__':
     en_nlp = spacy.load('en')
 
   corpus = dict()
+  corpus_testing = dict()
 
-  sys.stderr.write('start parsing training datas...\n')
+  sys.stderr.write('start parsing datas...\n')
   with open(args.file_list,'r') as file_list:
     for file_name in file_list:
       with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
@@ -224,6 +234,8 @@ if __name__ == '__main__':
               args.min_words, args.max_words)
         if args.debug:
           sys.stderr.write('finished parsing file ' + file_name[:-1] + '\n')
+  with open(args.testing_data,'r',encoding="utf-8",errors='ignore') as f:
+    Parse_testing(f, None, args.dependency_tree)
 
   sys.stderr.write('start embedding words...\n')
   with open(args.glove_file,'r') as glove:
@@ -235,7 +247,8 @@ if __name__ == '__main__':
       res = [[]]
       for word in glove:
         ret = word.split()
-        if ret[0] in corpus and corpus[ret[0]] > 1:
+        if (ret[0] in corpus and corpus[ret[0]] >= args.count) or \
+            ret[0] in corpus_testing:
           word_list.write(ret[0]+'\n')
           res.append(list(map(float,ret[1:])))
       for i in res:
