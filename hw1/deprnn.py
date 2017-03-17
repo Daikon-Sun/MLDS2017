@@ -18,7 +18,7 @@ default_use_dep = False
 default_learning_rate = 0.001
 default_init_scale = 0.001
 default_max_grad_norm = 25
-default_max_epoch = 40
+default_max_epoch = 2
 default_keep_prob = 0.3
 default_batch_size = 300
 default_data_dir = './Training_Data'+str(default_wordvec_src)+'/'
@@ -261,7 +261,6 @@ def run_epoch(sess, model, args):
   else:
     fetches['prob'] = model.prob
     fetches['target'] = model.target
-    #best = []
     for i in range(args.epoch_size):
       fd_dct = {}
       for i, (c, h) in enumerate(model.initial_state):
@@ -277,12 +276,8 @@ def run_epoch(sess, model, args):
       choices = np.array([[prob[j*5, target[k, j]]\
           for j in range(target.shape[1])] for k in range(5)])
 
-      best.append(chr(ord('a')+np.argmax(np.prod(choices, axis=1))))
-
-      #print(np.array(prob).shape)
-      #costs += cost
-      #iters += 1
     return chr(ord('a')+np.argmax(np.prod(choices, axis=1)))
+
 with tf.Graph().as_default():
   initializer = tf.random_uniform_initializer(-args.init_scale, args.init_scale)
 
