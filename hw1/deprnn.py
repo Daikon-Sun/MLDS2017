@@ -17,11 +17,11 @@ default_rnn_type = 1
 default_use_dep = False
 default_learning_rate = 0.001
 default_init_scale = 0.001
-default_max_grad_norm = 25
-default_max_epoch = 5
-default_keep_prob = 0.3
-default_batch_size = 300
-default_data_dir = './Training_Data'+str(default_wordvec_src)+'/'
+default_max_grad_norm = 30
+default_max_epoch = 100
+default_keep_prob = 0.5
+default_batch_size = 128
+default_data_dir = './Training_Data_03_17/'
 default_train_num = 522
 default_epoch_size = 100
 default_optimizer = 4
@@ -127,8 +127,6 @@ def get_single_example(para):
     features={\
       'content': tf.VarLenFeature(tf.int64),\
       'len': tf.FixedLenFeature([1], tf.int64)})
-  #feature['len'] = tf.clip_by_value(feature['len'], 0, 100)
-  #feature['content'] = tf.sparse_tensor_to_dense(feature['content'])[:100]
   return feature['content'], feature['len'][0]
 
 class DepRNN(object):
@@ -176,6 +174,7 @@ class DepRNN(object):
     one_sent, sq_len = get_single_example(para)
     batch, seq_len = tf.train.batch([one_sent, sq_len],\
         batch_size=para.batch_size, dynamic_pad=True)
+    #self._tmp = seq_len
     #sparse tensor cannot be sliced
     batch = tf.sparse_tensor_to_dense(batch)
 
@@ -206,11 +205,17 @@ class DepRNN(object):
 
     logits = tf.matmul(output, softmax_w)+softmax_b
 
-    if is_test(para.mode): self._prob = tf.nn.softmax(logits)
+    if is_test(para.mode):
+      self._prob = tf.nn.softmax(logits)
+      return
+
+    max_seq_len = tf.reduce_max(seq_len)
+    masks = tf.reshape(tf.sequence_mask(seq_len, max_seq_len), [-1])
+    masks = tf.mulitply(tf.ones([(max_seq_len-1)*para.batch_size]), masks)
 
     loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([logits],\
-        [tf.reshape(batch_y, [-1])],\
-        [tf.ones([(tf.reduce_max(seq_len)-1)*para.batch_size], dtype=tf.float32)])
+        [tf.reshape(batch_y, [-1])], [masks], dtype=tf.float32)])
+        #[tf.ones([(tf.reduce_max(seq_len)-1)*para.batch_size], dtype=tf.float32)])
 
     self._cost = cost = tf.reduce_mean(loss)
 
@@ -234,6 +239,8 @@ class DepRNN(object):
   def prob(self): return self._prob
   @property
   def target(self): return self._target
+  #@property
+  #def tmp(self): return self._tmp
 
 def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
@@ -241,9 +248,7 @@ def run_epoch(sess, model, args):
   iters = 0
   state = sess.run(model.initial_state)
 
-  fetches = {\
-      'cost': model.cost,\
-  }
+  fetches = {'cost': model.cost, 'tmp': model.tmp}
 
   if not is_test(args.mode):
     if is_train(args.mode):
@@ -253,7 +258,6 @@ def run_epoch(sess, model, args):
       for i, (c, h) in enumerate(model.initial_state):
         fd_dct[c] = state[i].c
         fd_dct[h] = state[i].h
-
       vals = sess.run(fetches, feed_dict=fd_dct)
       cost = vals['cost']
       costs += cost
@@ -269,12 +273,11 @@ def run_epoch(sess, model, args):
         fd_dct[h] = state[i].h
 
       vals = sess.run(fetches, feed_dict=fd_dct)
-      #cost = vals['cost']
       prob = vals['prob']
       target = vals['target']
 
       #shape of choices = 5 x (len(sentence)-1)
-      choices = np.array([[prob[j*5, target[k, j]]\
+      choices = np.array([[prob[k*5+j, target[k, j]]\
           for j in range(target.shape[1])] for k in range(5)])
 
     return chr(ord('a')+np.argmax(np.prod(choices, axis=1)))
@@ -319,4 +322,4 @@ with tf.Graph().as_default():
       wrtr.writerow(['id', 'answer'])
       for i in range(1040):
         result = run_epoch(sess, test_model, test_args)
-        wrtr.writerow([i+1, result[0]])
+        wrtr.writerow([i+1, result])
