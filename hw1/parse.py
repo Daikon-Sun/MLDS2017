@@ -51,6 +51,7 @@ def traverse_tree(writer, tree, dep, words_id):
   if leaf:
     global count_sentences
     count_sentences += 1
+    counter += 1
     example = tf.train.Example(
       features=tf.train.Features(
         feature={
@@ -110,10 +111,9 @@ def Parse(f, writer, dependency_tree, quote_split, comma_split,
                 int64_list=tf.train.Int64List(value=[len(words_id)]))}))
         serialized = example.SerializeToString()
         writer.write(serialized)
-  if dependency_tree:
-    exit(0)
 
 def Parse_testing(f, writer, dependency_tree):
+  number_of_tree = []
   for question in f:
     ret = question.split(',')
     if ret[0] == 'id':
@@ -126,7 +126,14 @@ def Parse_testing(f, writer, dependency_tree):
       cand = re.sub('[\']',' \'', cand)
       cand = re.sub('[^A-Za-z0-9\s\',.!?;]', '', cand)
       if dependency_tree:
-        pass
+        global counter
+        counter = 0
+        for sent in en_nlp(cand.lower()).sents:
+          tree = to_nltk_tree(sent.root)
+          if tree == None or type(tree) == str: continue
+          words_id = []
+          traverse_tree(writer, tree, 0, words_id)
+        number_of_tree.append(counter)
       else:
         if args.debug:
           sys.stderr.write(cand + '\n')
@@ -142,6 +149,8 @@ def Parse_testing(f, writer, dependency_tree):
                 int64_list=tf.train.Int64List(value=[len(words_id)]))}))
         serialized = example.SerializeToString()
         writer.write(serialized)
+  if dependency_tree:
+    np.save('number_of_tree.npy',np.array(number_of_tree))
 
 if __name__ == '__main__':
   # parsing arguments
@@ -244,6 +253,7 @@ if __name__ == '__main__':
       vocab_table[w[:-1]] = vocab_table_idx
       vocab_table_idx = vocab_table_idx + 1
 
+  global counter
   global unk_words
   global total_words
   global count_sentences
