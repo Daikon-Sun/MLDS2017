@@ -18,7 +18,7 @@ default_use_dep = False
 default_learning_rate = 0.001
 default_init_scale = 0.001
 default_max_grad_norm = 25
-default_max_epoch = 400
+default_max_epoch = 40
 default_keep_prob = 0.3
 default_batch_size = 300
 default_data_dir = './Training_Data'+str(default_wordvec_src)+'/'
@@ -319,8 +319,8 @@ with tf.Graph().as_default():
       #valid_perplexity = run_epoch(sess, valid_model, valid_args)
       #print('Epoch: %d Valid Perplexity: %.3f' % (i + 1, valid_perplexity))
     with open('submission/basic_lstm2.csv', 'w') as f:
+      wrtr = csv.writer(f)
       wrtr.writerow(['id', 'answer'])
       for i in range(1040):
         result = run_epoch(sess, test_model, test_args)
-        wrtr = csv.writer(f)
         wrtr.writerow([i+1, result[0]])
