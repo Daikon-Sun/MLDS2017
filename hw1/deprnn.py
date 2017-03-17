@@ -21,7 +21,7 @@ default_max_grad_norm = 30
 default_max_epoch = 100
 default_keep_prob = 0.5
 default_batch_size = 128
-default_data_dir = './Training_Data_03_17/'
+default_data_dir = './Training_Data/'
 default_train_num = 522
 default_epoch_size = 100
 default_optimizer = 4
@@ -98,18 +98,14 @@ wordvec = np.load(args.data_dir+'wordvec.npy')
 vocab = open(args.data_dir+'vocab.txt', 'r').read().splitlines()
 assert( len(vocab) == wordvec.shape[0])
 
-#decide vocab_size
-args.vocab_size = wordvec.shape[0]
+#decide vocab_size and embed_dim
+args.vocab_size, args.embed_dim = wordvec.shape
 
 #load in file list for training and validation
 filenames = open(args.data_dir+'file_list.txt', 'r').read().splitlines()
 filenames = [ args.data_dir+ff for ff in filenames ]
 filenames = [filenames[:default_train_num], filenames[default_train_num:],\
     ['testing_data.tfr']]
-
-#decide embedding dimension
-args.embed_dim = [50, 50, 100, 200, 300, 300, 300][args.wordvec_src]
-
 
 def is_train(mode): return mode == 0
 def is_valid(mode): return mode == 1
