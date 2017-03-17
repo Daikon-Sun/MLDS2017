@@ -9,22 +9,23 @@ from collections import Counter
 import copy
 import csv
 
-#default values
-default_wordvec_src = 1
-default_hidden_size = 256
-default_layer_num = 3
-default_rnn_type = 1
-default_use_dep = False
-default_learning_rate = 0.001
-default_init_scale = 0.001
-default_max_grad_norm = 30
-default_max_epoch = 100
-default_keep_prob = 0.5
+#default values (by alphabetic order)
 default_batch_size = 128
 default_data_dir = './Training_Data/'
-default_train_num = 522
 default_epoch_size = 100
+default_hidden_size = 256
+default_init_scale = 0.001
+default_keep_prob = 0.5
+default_layer_num = 3
+default_learning_rate = 0.001
+default_rnn_type = 1
+default_max_grad_norm = 30
+default_max_epoch = 100
+default_num_sampled = 2000
 default_optimizer = 4
+default_train_num = 522
+default_use_dep = False
+default_wordvec_src = 1
 optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,\
     tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,\
     tf.train.AdamOptimizer, tf.train.RMSPropOptimizer]
@@ -54,6 +55,9 @@ parser.add_argument('--wordvec_src', type=int, default=default_wordvec_src, narg
     [6:glove.840B]. (default:%d)'%default_wordvec_src)
 parser.add_argument('--layer_num', type=int, default=default_layer_num, nargs='?',\
     help='Number of rnn layer. (default:%d)'%default_layer_num)
+parser.add_argument('--num_sampled', type=int, default=default_num_sampled, nargs='?',\
+    help='Number of classes to be sampled in sampled_softmax_loss (default:%d)'\
+    %default_num_sampled)
 parser.add_argument('--optimizer', type=int, default=default_optimizer, nargs='?',\
     choices=range(0, 6),\
     help='Optimzers --> [0: GradientDescent], [1:Adadelta], [2:Adagrad],\
@@ -170,7 +174,6 @@ class DepRNN(object):
     one_sent, sq_len = get_single_example(para)
     batch, seq_len = tf.train.batch([one_sent, sq_len],\
         batch_size=para.batch_size, dynamic_pad=True)
-    #self._tmp = seq_len
     #sparse tensor cannot be sliced
     batch = tf.sparse_tensor_to_dense(batch)
 
@@ -194,26 +197,30 @@ class DepRNN(object):
     outputs, state = tf.nn.dynamic_rnn(cell, inputs,\
         sequence_length=seq_len, dtype=tf.float32)
     output = tf.reshape(tf.concat(outputs, 1), [-1, para.hidden_size])
-    with tf.variable_scope('softmax'):
-      softmax_w = tf.get_variable('w', [para.hidden_size, para.vocab_size],\
-          dtype=tf.float32)
-      softmax_b = tf.get_variable('b', [para.vocab_size], dtype=tf.float32)
-
-    logits = tf.matmul(output, softmax_w)+softmax_b
 
     if is_test(para.mode):
+      with tf.variable_scope('softmax'):
+        softmax_w = tf.get_variable('w', [para.vocab_size, para.hidden_size],\
+            dtype=tf.float32)
+        softmax_b = tf.get_variable('b', [para.vocab_size], dtype=tf.float32)
+
+      logits = tf.matmul(output, tf.transpose(softmax_w))+softmax_b
+
       self._prob = tf.nn.softmax(logits)
-      return
 
-    max_seq_len = tf.reduce_max(seq_len)
-    masks = tf.reshape(tf.sequence_mask(seq_len, max_seq_len), [-1])
-    masks = tf.mulitply(tf.ones([(max_seq_len-1)*para.batch_size]), masks)
+      #loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([logits],\
+      #    [tf.reshape(batch_y, [-1])],\
+      #    [tf.ones([(tf.reduce_max(seq_len)-1)*para.batch_size], dtype=tf.float32)])
+    else:
+      with tf.variable_scope('softmax'):
+        softmax_w = tf.get_variable('w', [para.vocab_size, para.hidden_size],\
+            dtype=tf.float32)
+        softmax_b = tf.get_variable('b', [para.vocab_size], dtype=tf.float32)
 
-    loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([logits],\
-        [tf.reshape(batch_y, [-1])], [masks], dtype=tf.float32)
-        #[tf.ones([(tf.reduce_max(seq_len)-1)*para.batch_size], dtype=tf.float32)])
-
-    self._cost = cost = tf.reduce_mean(loss)
+      loss = tf.nn.sampled_softmax_loss(softmax_w, softmax_b,\
+          tf.reshape(batch_y, [-1, 1]), output, num_sampled=para.num_sampled,\
+          num_classes=para.vocab_size)
+      self._cost = cost = tf.reduce_mean(loss)
 
     #if validation or testing, exit here
     if not is_train(para.mode): return
@@ -244,9 +251,10 @@ def run_epoch(sess, model, args):
   iters = 0
   state = sess.run(model.initial_state)
 
-  fetches = {'cost': model.cost, 'tmp': model.tmp}
+  fetches = {}
 
   if not is_test(args.mode):
+    fetches['cost'] = model.cost
     if is_train(args.mode):
       fetches['eval'] = model.eval
     for i in range(args.epoch_size):
