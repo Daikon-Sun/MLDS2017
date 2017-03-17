@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import argparse
@@ -9,20 +10,24 @@ import copy
 import csv
 
 #default values
-default_wordvec_src = 1
-default_hidden_size = 2
-default_layer_num = 3
+default_wordvec_src = 2
+default_hidden_size = 256
+default_layer_num = 4
 default_rnn_type = 1
 default_use_dep = False
-default_learning_rate = 0.005
+default_learning_rate = 0.001
 default_init_scale = 0.001
-default_max_grad_norm = 30
-default_max_epoch = 1#300
-default_keep_prob = 0.4
-default_batch_size = 100
-default_data_dir = './Training_Data/'
-default_train_num = 350
-default_epoch_size = 20
+default_max_grad_norm = 25
+default_max_epoch = 400
+default_keep_prob = 0.3
+default_batch_size = 300
+default_data_dir = './Training_Data'+str(default_wordvec_src)+'/'
+default_train_num = 522
+default_epoch_size = 100
+default_optimizer = 4
+optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,\
+    tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,\
+    tf.train.AdamOptimizer, tf.train.RMSPropOptimizer]
 
 #functions for arguments of unsupported types
 def t_or_f(arg):
@@ -49,6 +54,9 @@ parser.add_argument('--wordvec_src', type=int, default=default_wordvec_src, narg
     [6:glove.840B]. (default:%d)'%default_wordvec_src)
 parser.add_argument('--layer_num', type=int, default=default_layer_num, nargs='?',\
     help='Number of rnn layer. (default:%d)'%default_layer_num)
+parser.add_argument('--optimizer', type=int, default=default_layer_num, nargs='?',\
+    help='Optimzers --> [0: GradientDescent], [1:Adadelta], [2:Adagrad],\
+    [3:Momentum], [4:Adam], [5:RMSProp]. (default:%d)'%default_optimizer)
 parser.add_argument('--rnn_type', type=int, default=default_rnn_type, nargs='?',\
     choices=range(0, 4),\
     help='Type of rnn cell --> [0:Basic], [1:basic LSTM], [2:full LSTM], [3:GRU].\
@@ -100,6 +108,7 @@ filenames = [filenames[:default_train_num], filenames[default_train_num:],\
 
 #decide embedding dimension
 args.embed_dim = [50, 50, 100, 200, 300, 300, 300][args.wordvec_src]
+
 
 def is_train(mode): return mode == 0
 def is_valid(mode): return mode == 1
@@ -169,7 +178,6 @@ class DepRNN(object):
     #sparse tensor cannot be sliced
     batch = tf.sparse_tensor_to_dense(batch)
 
-
     #seq_len is for dynamic_rnn
     seq_len = tf.to_int32(seq_len)
 
@@ -211,8 +219,7 @@ class DepRNN(object):
     #clip global gradient norm
     tvars = tf.trainable_variables()
     grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars), para.max_grad_norm)
-    optimizer = tf.train.GradientDescentOptimizer(para.learning_rate)
-    #optimizer = tf.train.AdamOptimizer(para.learning_rate)
+    optimizer = optimizers[para.optimizer](para.learning_rate)
     self._eval = optimizer.apply_gradients(zip(grads, tvars),\
         global_step=tf.contrib.framework.get_or_create_global_step())
 
@@ -251,11 +258,10 @@ def run_epoch(sess, model, args):
       costs += cost
       iters += 1
     return np.exp(costs/iters)
-
   else:
     fetches['prob'] = model.prob
     fetches['target'] = model.target
-    best = []
+    #best = []
     for i in range(args.epoch_size):
       fd_dct = {}
       for i, (c, h) in enumerate(model.initial_state):
@@ -263,7 +269,7 @@ def run_epoch(sess, model, args):
         fd_dct[h] = state[i].h
 
       vals = sess.run(fetches, feed_dict=fd_dct)
-      cost = vals['cost']
+      #cost = vals['cost']
       prob = vals['prob']
       target = vals['target']
 
@@ -274,10 +280,9 @@ def run_epoch(sess, model, args):
       best.append(chr(ord('a')+np.argmax(np.prod(choices, axis=1))))
 
       #print(np.array(prob).shape)
-      costs += cost
-      iters += 1
-    return best
-
+      #costs += cost
+      #iters += 1
+    return chr(ord('a')+np.argmax(np.prod(choices, axis=1)))
 with tf.Graph().as_default():
   initializer = tf.random_uniform_initializer(-args.init_scale, args.init_scale)
 
@@ -287,20 +292,22 @@ with tf.Graph().as_default():
     with tf.variable_scope('model', reuse=None, initializer=initializer):
       train_args.mode = 0
       train_model = DepRNN(para=train_args)
+  '''
   with tf.name_scope('valid'):
     valid_args = copy.deepcopy(args)
     with tf.variable_scope('model', reuse=True, initializer=initializer):
       valid_args.mode = 1
       valid_model = DepRNN(para=valid_args)
+  '''
   with tf.name_scope('test'):
     test_args = copy.deepcopy(args)
     with tf.variable_scope('model', reuse=True, initializer=initializer):
       test_args.mode = 2
       test_args.batch_size = 5
-      test_args.epoch_size = 1040
+      test_args.epoch_size = 1
       test_model = DepRNN(para=test_args)
 
-  sv = tf.train.Supervisor(logdir='./logs/', saver=None)
+  sv = tf.train.Supervisor(logdir='./logs/')
   with sv.managed_session() as sess:
 
     #load in pre-trained word-embedding
@@ -309,11 +316,11 @@ with tf.Graph().as_default():
     for i in range(args.max_epoch):
       train_perplexity = run_epoch(sess, train_model, train_args)
       print('Epoch: %d Train Perplexity: %.4f' % (i + 1, train_perplexity))
-      valid_perplexity = run_epoch(sess, valid_model, valid_args)
-      print('Epoch: %d Valid Perplexity: %.3f' % (i + 1, valid_perplexity))
-    result = run_epoch(sess, test_model, test_args)
-    with open('submission/basic_lstm.csv', 'w') as f:
-      wrtr = csv.writer(f)
+      #valid_perplexity = run_epoch(sess, valid_model, valid_args)
+      #print('Epoch: %d Valid Perplexity: %.3f' % (i + 1, valid_perplexity))
+    with open('submission/basic_lstm2.csv', 'w') as f:
       wrtr.writerow(['id', 'answer'])
-      for i in range(0, 1040):
-        wrtr.writerow([i+1, result[i]])
+      for i in range(1040):
+        result = run_epoch(sess, test_model, test_args)
+        wrtr = csv.writer(f)
+        wrtr.writerow([i+1, result[0]])
