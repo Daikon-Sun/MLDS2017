@@ -25,6 +25,41 @@ def valid(sentence):
       if not any(c in ['a','e','i','o','u','y'] for c in word):
         return False      
   return True
+
+def traverse_tree(writer, tree, dep, words_id):
+  if isinstance(tree, string_types):
+    word = tree
+  else:
+    word = tree._label if isinstance(tree._label, string_types) \
+                       else unicode_repr(self._label)
+  if len(words_id) <= dep:
+    words_id.append(0)
+  words_id[dep] = 0 if word not in vocab_table else vocab_table[word]
+  leaf = True
+  if not isinstance(tree, string_types):
+    for child in tree:
+      leaf = False
+      if isinstance(child, Tree):
+        traverse_tree(writer, child, dep+1, words_id)
+      elif isinstance(child, tuple):
+        for cc in child:
+          traverse_tree(writer, cc, dep+1, words_id)
+      elif isinstance(child, string_types):
+        traverse_tree(writer, child, dep+1, words_id)
+      else:
+        traverse_tree(writer, unicode_repr(child), dep+1, words_id)
+  if leaf:
+    global count_sentences
+    count_sentences += 1
+    example = tf.train.Example(
+      features=tf.train.Features(
+        feature={
+          'content': tf.train.Feature(
+          int64_list=tf.train.Int64List(value=words_id[:dep+1])),
+          'len': tf.train.Feature(
+          int64_list=tf.train.Int64List(value=[dep+1]))}))
+    serialized = example.SerializeToString()
+    writer.write(serialized)
   
 # Parse the given content into dependency trees
 def Parse(f, writer, dependency_tree, quote_split, comma_split,
@@ -40,14 +75,13 @@ def Parse(f, writer, dependency_tree, quote_split, comma_split,
     sent = re.sub('[^A-Za-z0-9\s\',.!?;]', '', re.sub('\s+', ' ', sentence))
     if not valid(sent): continue
     if dependency_tree:
+      if len(sent.split()) < min_words or len(sent.split()) > max_words:
+        continue
       for sent in en_nlp(sent.lower()).sents:
         tree = to_nltk_tree(sent.root)
-        if tree == None: continue
-        if type(tree) != str:
-          sys.stdout = open('tmp','w')
-          tree.pprint()
-          sys.stdout.flush()
-          # of.write(' '.join(line.strip() for line in open('tmp','r')) + '\n' )
+        if tree == None or type(tree) == str: continue
+        words_id = []
+        traverse_tree(writer, tree, 0, words_id)
     else:
       if writer is None:
         for word in sent.lower().split():
@@ -56,9 +90,12 @@ def Parse(f, writer, dependency_tree, quote_split, comma_split,
           else:
             corpus[ word ] = 1
       else:
+        sent = sent.lower().split()
         if len(sent) < min_words or len(sent) > max_words: continue
+        global count_sentences
+        count_sentences += 1
         words_id = []
-        for word in sent.lower().split():
+        for word in sent:
           words_id.append(0 if word not in vocab_table else vocab_table[word])
         global unk_words
         global total_words
@@ -73,17 +110,15 @@ def Parse(f, writer, dependency_tree, quote_split, comma_split,
                 int64_list=tf.train.Int64List(value=[len(words_id)]))}))
         serialized = example.SerializeToString()
         writer.write(serialized)
+  if dependency_tree:
+    exit(0)
 
 def Parse_testing(f, writer, dependency_tree):
   for question in f:
     ret = question.split(',')
     if ret[0] == 'id':
       continue
-    sent = ''
-    for token in ret[1:-5]:
-      if len(sent) > 0:
-        sent += ','
-      sent += token
+    sent = ','.join(ret[1:-5])
     for choice in ret[-5:]:
       cand = re.sub('_____', choice, sent)
       for cc in '.!?;,':
@@ -176,12 +211,10 @@ if __name__ == '__main__':
       with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
         if args.debug:
           sys.stderr.write('start parsing file ' + file_name[:-1] + '\n')
-        Parse(f, None, args.dependency_tree, args.quote_split, args.comma_split,
+        Parse(f, None, False, args.quote_split, args.comma_split,
               args.min_words, args.max_words)
         if args.debug:
           sys.stderr.write('finished parsing file ' + file_name[:-1] + '\n')
-  if args.dependency_tree:
-    os.remove('tmp')
 
   sys.stderr.write('start embedding words...\n')
   with open(args.glove_file,'r') as glove:
@@ -213,7 +246,8 @@ if __name__ == '__main__':
 
   global unk_words
   global total_words
-  unk_words, total_words = 0, 0
+  global count_sentences
+  unk_words, total_words, count_sentences = 0, 0, 0
   with open(args.file_list,'r') as file_list:
     for file_name in file_list:
       with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
@@ -224,6 +258,7 @@ if __name__ == '__main__':
               args.min_words, args.max_words)
   sys.stderr.write('unk_words: %d, total_words: %d, perc: %f%%\n' %
                    (unk_words, total_words, unk_words * 100 / total_words))
+  sys.stderr.write('Number of sentences: %d\n' % count_sentences)
 
   sys.stderr.write('start transforming testing data '
                    'into the format of TFRecoder file...\n')
