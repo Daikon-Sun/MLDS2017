@@ -249,8 +249,6 @@ def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
   costs = 0.0
   iters = 0
-  state = sess.run(model.initial_state)
-
   fetches = {}
 
   if not is_test(args.mode):
@@ -258,6 +256,7 @@ def run_epoch(sess, model, args):
     if is_train(args.mode):
       fetches['eval'] = model.eval
     for i in range(args.epoch_size):
+      state = sess.run(model.initial_state)
       fd_dct = {}
       for i, (c, h) in enumerate(model.initial_state):
         fd_dct[c] = state[i].c
@@ -271,6 +270,7 @@ def run_epoch(sess, model, args):
     fetches['prob'] = model.prob
     fetches['target'] = model.target
     for i in range(args.epoch_size):
+      state = sess.run(model.initial_state)
       fd_dct = {}
       for i, (c, h) in enumerate(model.initial_state):
         fd_dct[c] = state[i].c
