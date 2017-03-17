@@ -81,7 +81,7 @@ with open(args.test_data, 'r') as test_data:
     prob.append(tmp_prob)
 
 # save result in npy format
-np.save("gram_result,np", np.array(prob))
+np.save("gram_result", np.array(prob))
 
 
 
