@@ -20,7 +20,7 @@ default_layer_num = 3
 default_learning_rate = 0.001
 default_rnn_type = 1
 default_max_grad_norm = 30
-default_max_epoch = 100
+default_max_epoch = 1#200
 default_num_sampled = 2000
 default_optimizer = 4
 default_train_num = 522
@@ -96,6 +96,9 @@ parser.add_argument('--data_dir', type=str, default=default_data_dir, nargs='?',
     help='Directory where the data are placed. (default:%s)'%default_data_dir)
 
 args = parser.parse_args()
+
+#calculate real epochs
+print('training with %.2f epochs!' % ((args.batch_size*args.epoch_size*args.max_epoch)/1238250))
 
 #load in pre-trained word embedding and vocabulary list
 src_name = ['toy_data', '6B.50d', '6B.100d', '6B.200d', '6B.300d', '42B', '840B']
@@ -286,7 +289,7 @@ def run_epoch(sess, model, args):
       choices = np.array([[prob[k*5+j, target[k, j]]\
           for j in range(target.shape[1])] for k in range(5)])
 
-    return chr(ord('a')+np.argmax(np.prod(choices, axis=1)))
+    return chr(ord('a')+np.argmax(np.sum(np.log(choices), axis=1)))
 
 with tf.Graph().as_default():
   initializer = tf.random_uniform_initializer(-args.init_scale, args.init_scale)
