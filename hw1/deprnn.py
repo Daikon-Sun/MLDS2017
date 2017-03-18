@@ -80,6 +80,7 @@ parser.add_argument('--use_dep', type=t_or_f, default=default_use_dep, nargs='?'
 parser.add_argument('--max_epoch', type=int, default=default_max_epoch, nargs='?',\
     help='Maximum epoch to be trained. (default:%d)'%default_max_epoch)
 parser.add_argument('--train_num', type=int, default=default_train_num, nargs='?',\
+    choices=range(260, 523),\
     help='Number of files out of the total 522 files to be trained. (default:%d)'\
     %default_train_num)
 parser.add_argument('--keep_prob', type=restricted_float,\
@@ -163,9 +164,6 @@ class DepRNN(object):
     cell = tf.contrib.rnn.MultiRNNCell([rnn_cell()] * para.layer_num,\
         state_is_tuple=True)
 
-    #initialize rnn_cell state to zero
-    #self._initial_state = cell.zero_state(para.batch_size, tf.float32)
-
     #using pre-trained word embedding
     W_E = tf.Variable(tf.constant(0.0,\
         shape=[para.vocab_size, para.embed_dim]), trainable=False, name='W_E')
@@ -188,8 +186,7 @@ class DepRNN(object):
     batch_y = batch[:, 1:]
 
     #if testing, need to know the word ids
-    self._target = batch_y
-    #if is_test(para.mode): self._target = batch_y
+    if is_test(para.mode): self._target = batch_y
 
     #word_id to vector
     inputs = tf.nn.embedding_lookup(W_E, batch_x)
@@ -237,8 +234,6 @@ class DepRNN(object):
     self._eval = optimizer.apply_gradients(zip(grads, tvars),\
         global_step=tf.contrib.framework.get_or_create_global_step())
 
-  #@property
-  #def initial_state(self): return self._initial_state
   @property
   def cost(self): return self._cost
   @property
@@ -251,34 +246,18 @@ class DepRNN(object):
   def output(self): return self._output
   @property
   def sqlen(self): return self._sqlen
-  #@property
-  #def inital(self): return self._initial
-  #@property
-  #def final(self): return self._final
 
 def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
   fetches = {}
-  #train_writer = tf.summary.FileWriter('./logs/', sess.graph)
-  np.set_printoptions(threshold=np.nan, linewidth=235, precision=3)
 
   if not is_test(args.mode):
     fetches['cost'] = model.cost
-    fetches['target'] = model.target
-    fetches['output'] = model.output
-    fetches['sqlen'] = model.sqlen
-    #fetches['summ'] = merged
     if is_train(args.mode):
       fetches['eval'] = model.eval
     vals = sess.run(fetches)
-    target = vals['target']
-    #print(vals['output'].shape)
-    #print(target)
-    #print(vals['sqlen'])
-    #train_writer.add_summary(vals['summ'])
     return np.exp(vals['cost'])
   else:
-    fetches['cost'] = model.cost
     fetches['prob'] = model.prob
     fetches['target'] = model.target
 
@@ -289,12 +268,6 @@ def run_epoch(sess, model, args):
     #shape of choices = 5 x (len(sentence)-1)
     choices = np.array([[prob[k*target.shape[1]+j, target[k, j]]\
         for j in range(target.shape[1])] for k in range(5)])
-    #return np.exp(vals['cost'])
-    #print(target)
-    #print(np.sum(prob, axis=1)[:10])
-    #print(prob[:110])
-    #print(np.log(choices))
-    #print('-'*80)
 
     return chr(ord('a')+np.argmax(np.sum(np.log(choices), axis=1)))
 
@@ -307,13 +280,12 @@ with tf.Graph().as_default():
     with tf.variable_scope('model', reuse=None, initializer=initializer):
       train_args.mode = 0
       train_model = DepRNN(para=train_args)
-  '''
-  with tf.name_scope('valid'):
-    valid_args = copy.deepcopy(args)
-    with tf.variable_scope('model', reuse=True, initializer=initializer):
-      valid_args.mode = 1
-      valid_model = DepRNN(para=valid_args)
-  '''
+  if args.train_num < 522:
+    with tf.name_scope('valid'):
+      valid_args = copy.deepcopy(args)
+      with tf.variable_scope('model', reuse=True, initializer=initializer):
+        valid_args.mode = 1
+        valid_model = DepRNN(para=valid_args)
   with tf.name_scope('test'):
     test_args = copy.deepcopy(args)
     with tf.variable_scope('model', reuse=True, initializer=initializer):
@@ -321,7 +293,6 @@ with tf.Graph().as_default():
       test_args.batch_size = 5
       test_model = DepRNN(para=test_args)
 
-  #merged = tf.summary.merge_all()
   sv = tf.train.Supervisor(logdir='./logs/')
   with sv.managed_session() as sess:
 
@@ -330,13 +301,9 @@ with tf.Graph().as_default():
     for i in range(1, args.max_epoch+1):
       train_perplexity = run_epoch(sess, train_model, train_args)
       if i%20 == 0: print('Epoch: %d Train Perplexity: %.4f'%(i, train_perplexity))
-      '''
-      valid_perplexity = run_epoch(sess, valid_model, valid_args)
-      if i%20 == 0: print('Epoch: %d Valid Perplexity: %.4f'%(i, valid_perplexity))
-      '''
-      #test_perplexity = run_epoch(sess, test_model, test_args)
-      #if i%20 == 0: print('Epoch: %d Test  Perplexity: %.4f'%(i, test_perplexity))
-      if i%20 == 0: print('-'*80)
+      if args.train_num < 522:
+        valid_perplexity = run_epoch(sess, valid_model, valid_args)
+        if i%20 == 0: print('Epoch: %d Valid Perplexity: %.4f'%(i, valid_perplexity))
 
     with open('submission/basic_lstm2.csv', 'w') as f:
       wrtr = csv.writer(f)
