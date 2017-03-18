@@ -64,34 +64,45 @@ def traverse_tree(writer, tree, dep, words_id):
   
 # Parse the given content into dependency trees
 def Parse(f, writer, dependency_tree, quote_split, comma_split,
-          min_words, max_words):
+          min_words, max_words, slice_out):
   content = re.sub('\n|\r', ' ', ''.join( i for i in f ))
+  if slice_out:
+    ret = re.search(r"\bC[hH][aA][pP][tT][eE][rR] (I|One|ONE)\b", content)
+    st_idx = 0 if ret is None else ret.start()
+    ret = re.search(r"\bEnd of (|The )Project\b", content)
+    ed_idx = len(content) if ret is None else ret.start()
+    content = content[st_idx:ed_idx]
   content = re.sub('[,]',' , ',content)
+  for cc in ['Mr','Mrs','Ms']:
+    content = re.sub(cc+'.', cc, content)
   target = '.!?;\"' if quote_split else '.!?;'
   if comma_split: target += ','
   for cc in target:
     content = re.sub('['+cc+']',' '+cc+'\n', content)
+  for cc in ['Mr','Mrs','Ms']:
+    content = re.sub(cc, cc+'.', content)
   content = re.sub('[\']',' \'', content)
   for sentence in content.split('\n'):
-    sent = re.sub('[^A-Za-z0-9\s\',.!?;]', '', re.sub('\s+', ' ', sentence))
+    sent = re.sub('[^A-Za-z0-9\s\',.!?;]', ' ', re.sub('\s+', ' ', sentence))
+    sent = ' '.join(sent.lower().split())
     if not valid(sent): continue
     if dependency_tree:
       if len(sent.split()) < min_words or len(sent.split()) > max_words:
         continue
-      for sent in en_nlp(sent.lower()).sents:
+      for sent in en_nlp(sent).sents:
         tree = to_nltk_tree(sent.root)
         if tree == None or type(tree) == str: continue
         words_id = []
         traverse_tree(writer, tree, 0, words_id)
     else:
       if writer is None:
-        for word in sent.lower().split():
+        for word in sent.split():
           if word in corpus:
             corpus[ word ] += 1
           else:
             corpus[ word ] = 1
       else:
-        sent = sent.lower().split()
+        sent = sent.split()
         if len(sent) < min_words or len(sent) > max_words: continue
         global count_sentences
         count_sentences += 1
@@ -121,8 +132,12 @@ def Parse_testing(f, writer, dependency_tree):
     sent = ','.join(ret[1:-5])
     for choice in ret[-5:]:
       cand = re.sub('_____', choice, sent)
+      for cc in ['Mr','Mrs','Ms']:
+        cand = re.sub(cc+'.', cc, cand)
       for cc in '.!?;,':
         cand = re.sub('['+cc+']',' '+cc+' ', cand)
+      for cc in ['Mr','Mrs','Ms']:
+        cand = re.sub(cc, cc+'.', cand)
       cand = re.sub('[\']',' \'', cand)
       cand = re.sub('[^A-Za-z0-9\s\',.!?;]', '', cand)
       if writer is None:
@@ -201,6 +216,10 @@ if __name__ == '__main__':
         help='If the sentence has more than MAX_WORDS words, '
              'it won\'t be taken into consideration.(Marks also count)'
              '(default: %(default)s)',)
+  argparser.add_argument('-s', '--slice_out',
+        help='Head and tail part of content will be sliced out.'
+             ' (default: It won\'t be sliced out)',
+        action='store_true')
   argparser.add_argument('-q', '--quote_split',
         help='Sentences will be split between quotation marks (\'\"\')'
              ' (default: split only by {\'.\',\'!\',\'?\',\';\'}).',
@@ -231,7 +250,7 @@ if __name__ == '__main__':
         if args.debug:
           sys.stderr.write('start parsing file ' + file_name[:-1] + '\n')
         Parse(f, None, False, args.quote_split, args.comma_split,
-              args.min_words, args.max_words)
+              args.min_words, args.max_words, args.slice_out)
         if args.debug:
           sys.stderr.write('finished parsing file ' + file_name[:-1] + '\n')
   with open(args.testing_data,'r',encoding="utf-8",errors='ignore') as f:
