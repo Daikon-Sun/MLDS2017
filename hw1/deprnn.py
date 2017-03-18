@@ -11,8 +11,8 @@ import csv
 
 #default values (in alphabetic order)
 default_batch_size = 256
-default_data_dir = './Training_Data_16000/'
-default_hidden_size = 256
+default_data_dir = './Training_Data_19000/'
+default_hidden_size = 512
 default_init_scale = 0.001
 default_keep_prob = 0.6
 default_layer_num = 2
@@ -241,7 +241,7 @@ class DepRNN(object):
       loss = tf.nn.sampled_softmax_loss(softmax_w, softmax_b,\
         tf.reshape(batch_y, [-1, 1]), output, num_sampled=para.num_sampled,\
         num_classes=para.vocab_size)
-    self._cost = cost = tf.reduce_mean(loss)
+    self._cost = cost = tf.reduce_sum(loss)/tf.to_float(tf.reduce_sum(seq_len))
 
     #if validation or testing, exit here
     if not is_train(para.mode): return
@@ -332,19 +332,24 @@ with tf.Graph().as_default():
         valid_perplexity = run_epoch(sess, valid_model, valid_args)
         if i%20 == 0: print('Epoch: %d Valid Perplexity: %.4f'%(i, valid_perplexity))
 
-    print('waiting for an input word...')
-    state = sess.run(gen_model.init)
-    word = str(input())
+    print('waiting for an input word, enter n to exit...')
     while True:
-      fetches = {'prob':gen_model.prob, 'state':gen_model.state}
-      fdct = {gen_model.input: [[vdct[word] if word in vocab else 0]]}
-      for i, (c, h) in enumerate(gen_model.init):
-        fdct[c] = state[i].c
-        fdct[h] = state[i].h
-      vals = sess.run(fetches, feed_dict=fdct)
-      word = vocab[ np.argmax(vals['prob']) ]
-      state = vals['state']
-      print(' '+word)
+      state = sess.run(gen_model.init)
+      word = str(input())
+      if word == 'n': break
+      cnt = 0
+      while True:
+        fetches = {'prob':gen_model.prob, 'state':gen_model.state}
+        fdct = {gen_model.input: [[vdct[word] if word in vocab else 0]]}
+        for i, (c, h) in enumerate(gen_model.init):
+          fdct[c] = state[i].c
+          fdct[h] = state[i].h
+        vals = sess.run(fetches, feed_dict=fdct)
+        word = vocab[ np.argmax(vals['prob']) ]
+        state = vals['state']
+        print(' '+word)
+        cnt += 1
+        if cnt>20: break
 
     with open('submission/basic_lstm2.csv', 'w') as f:
       wrtr = csv.writer(f)
