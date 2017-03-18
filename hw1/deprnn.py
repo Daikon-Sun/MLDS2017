@@ -179,7 +179,7 @@ class DepRNN(object):
     batch = tf.sparse_tensor_to_dense(batch)
 
     #seq_len is for dynamic_rnn
-    self._sqlen = seq_len = tf.to_int32(seq_len)
+    seq_len = tf.to_int32(seq_len)
 
     #x and y differ by one position
     batch_x = batch[:, :-1]
@@ -197,7 +197,7 @@ class DepRNN(object):
     #use dynamic_rnn to build dynamic-time-step rnn
     outputs, state = tf.nn.dynamic_rnn(cell, inputs,\
         sequence_length=seq_len, dtype=tf.float32)
-    self._output = output = tf.reshape(outputs, [-1, para.hidden_size])
+    output = tf.reshape(outputs, [-1, para.hidden_size])
     #tf.summary.histogram('output', output)
 
     if is_test(para.mode):
@@ -242,10 +242,6 @@ class DepRNN(object):
   def prob(self): return self._prob
   @property
   def target(self): return self._target
-  @property
-  def output(self): return self._output
-  @property
-  def sqlen(self): return self._sqlen
 
 def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
