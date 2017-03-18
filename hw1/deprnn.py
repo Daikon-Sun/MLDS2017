@@ -14,20 +14,21 @@ default_batch_size = 256
 default_data_dir = './Training_Data_16000/'
 default_hidden_size = 256
 default_init_scale = 0.001
-default_keep_prob = 0.6
-default_layer_num = 2
+default_keep_prob = 0.8
+default_layer_num = 1
 default_learning_rate = 0.0005
 default_rnn_type = 1
-default_max_grad_norm = 30
+default_max_grad_norm = 40
 default_max_epoch = 10000
-default_num_sampled = 1500
+default_num_sampled = 2000
 default_optimizer = 4
-default_train_num = 400
+default_train_num = 522
 default_use_dep = False
 default_wordvec_src = 4
 optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,\
     tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,\
     tf.train.AdamOptimizer, tf.train.RMSPropOptimizer]
+src_name = ['', '6B.50d', '6B.100d', '6B.200d', '6B.300d', '42B.300d', '840B.300d']
 
 #functions for arguments of unsupported types
 def t_or_f(arg):
@@ -98,7 +99,6 @@ args = parser.parse_args()
 print('training with %.3f epochs!' % ((args.batch_size*args.max_epoch)/1238250))
 
 #load in pre-trained word embedding and vocabulary list
-src_name = ['', '6B.50d', '6B.100d', '6B.200d', '6B.300d', '42B.300d', '840B.300d']
 wordvec = np.load('data/wordvec.'+src_name[args.wordvec_src]+'.npy')
 vocab = open('data/vocab.'+src_name[args.wordvec_src]+'.txt', 'r').read().splitlines()
 assert( len(vocab) == wordvec.shape[0])
@@ -129,7 +129,7 @@ def get_single_example(para):
     features={\
         'content': tf.VarLenFeature(tf.int64),\
         'len': tf.FixedLenFeature([1], tf.int64)})
-  return feature['content'], feature['len'][0]
+  return feature['content'], feature['len'][0]-1
 
 class DepRNN(object):
   '''dependency-tree based rnn'''
@@ -181,14 +181,15 @@ class DepRNN(object):
     batch = tf.sparse_tensor_to_dense(batch)
 
     #seq_len is for dynamic_rnn
-    seq_len = tf.to_int32(seq_len)
+    self._sqlen = seq_len = tf.to_int32(seq_len)
 
     #x and y differ by one position
     batch_x = batch[:, :-1]
     batch_y = batch[:, 1:]
 
     #if testing, need to know the word ids
-    if is_test(para.mode): self._target = batch_y
+    self._target = batch_y
+    #if is_test(para.mode): self._target = batch_y
 
     #word_id to vector
     inputs = tf.nn.embedding_lookup(W_E, batch_x)
@@ -199,7 +200,7 @@ class DepRNN(object):
     #use dynamic_rnn to build dynamic-time-step rnn
     outputs, state = tf.nn.dynamic_rnn(cell, inputs,\
         sequence_length=seq_len, dtype=tf.float32)
-    output = tf.reshape(tf.concat(outputs, 1), [-1, para.hidden_size])
+    self._output = output = tf.reshape(outputs, [-1, para.hidden_size])
     #tf.summary.histogram('output', output)
 
     if is_test(para.mode):
@@ -211,7 +212,7 @@ class DepRNN(object):
       logits = tf.matmul(output, tf.transpose(softmax_w))+softmax_b
       loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([logits],\
         [tf.reshape(batch_y, [-1])],\
-        [tf.ones([(tf.reduce_max(seq_len)-1)*para.batch_size], dtype=tf.float32)])
+        [tf.ones([tf.reduce_max(seq_len)*para.batch_size], dtype=tf.float32)])
 
       self._prob = tf.nn.softmax(logits)
 
@@ -246,18 +247,34 @@ class DepRNN(object):
   def prob(self): return self._prob
   @property
   def target(self): return self._target
+  @property
+  def output(self): return self._output
+  @property
+  def sqlen(self): return self._sqlen
+  #@property
+  #def inital(self): return self._initial
+  #@property
+  #def final(self): return self._final
 
 def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
   fetches = {}
   #train_writer = tf.summary.FileWriter('./logs/', sess.graph)
+  np.set_printoptions(threshold=np.nan, linewidth=235, precision=3)
 
   if not is_test(args.mode):
     fetches['cost'] = model.cost
+    fetches['target'] = model.target
+    fetches['output'] = model.output
+    fetches['sqlen'] = model.sqlen
     #fetches['summ'] = merged
     if is_train(args.mode):
       fetches['eval'] = model.eval
     vals = sess.run(fetches)
+    target = vals['target']
+    #print(vals['output'].shape)
+    #print(target)
+    #print(vals['sqlen'])
     #train_writer.add_summary(vals['summ'])
     return np.exp(vals['cost'])
   else:
@@ -272,13 +289,14 @@ def run_epoch(sess, model, args):
     #shape of choices = 5 x (len(sentence)-1)
     choices = np.array([[prob[k*target.shape[1]+j, target[k, j]]\
         for j in range(target.shape[1])] for k in range(5)])
-    return np.exp(vals['cost'])
-    #np.set_printoptions(threshold=np.nan)
+    #return np.exp(vals['cost'])
     #print(target)
-    #print(choices)
+    #print(np.sum(prob, axis=1)[:10])
+    #print(prob[:110])
+    #print(np.log(choices))
     #print('-'*80)
 
-    #return chr(ord('a')+np.argmax(np.sum(np.log(choices), axis=1)))
+    return chr(ord('a')+np.argmax(np.sum(np.log(choices), axis=1)))
 
 with tf.Graph().as_default():
   initializer = tf.random_uniform_initializer(-args.init_scale, args.init_scale)
@@ -289,11 +307,13 @@ with tf.Graph().as_default():
     with tf.variable_scope('model', reuse=None, initializer=initializer):
       train_args.mode = 0
       train_model = DepRNN(para=train_args)
+  '''
   with tf.name_scope('valid'):
     valid_args = copy.deepcopy(args)
     with tf.variable_scope('model', reuse=True, initializer=initializer):
       valid_args.mode = 1
       valid_model = DepRNN(para=valid_args)
+  '''
   with tf.name_scope('test'):
     test_args = copy.deepcopy(args)
     with tf.variable_scope('model', reuse=True, initializer=initializer):
@@ -310,10 +330,12 @@ with tf.Graph().as_default():
     for i in range(1, args.max_epoch+1):
       train_perplexity = run_epoch(sess, train_model, train_args)
       if i%20 == 0: print('Epoch: %d Train Perplexity: %.4f'%(i, train_perplexity))
+      '''
       valid_perplexity = run_epoch(sess, valid_model, valid_args)
       if i%20 == 0: print('Epoch: %d Valid Perplexity: %.4f'%(i, valid_perplexity))
-      test_perplexity = run_epoch(sess, test_model, test_args)
-      if i%20 == 0: print('Epoch: %d Test  Perplexity: %.4f'%(i, test_perplexity))
+      '''
+      #test_perplexity = run_epoch(sess, test_model, test_args)
+      #if i%20 == 0: print('Epoch: %d Test  Perplexity: %.4f'%(i, test_perplexity))
       if i%20 == 0: print('-'*80)
 
     with open('submission/basic_lstm2.csv', 'w') as f:
