@@ -14,12 +14,12 @@ default_batch_size = 256
 default_data_dir = './Training_Data_16000/'
 default_hidden_size = 256
 default_init_scale = 0.001
-default_keep_prob = 0.8
-default_layer_num = 1
+default_keep_prob = 0.6
+default_layer_num = 2
 default_learning_rate = 0.0005
 default_rnn_type = 1
 default_max_grad_norm = 40
-default_max_epoch = 10000
+default_max_epoch = 30000
 default_num_sampled = 2000
 default_optimizer = 4
 default_train_num = 522
@@ -102,6 +102,7 @@ print('training with %.3f epochs!' % ((args.batch_size*args.max_epoch)/1238250))
 #load in pre-trained word embedding and vocabulary list
 wordvec = np.load('data/wordvec.'+src_name[args.wordvec_src]+'.npy')
 vocab = open('data/vocab.'+src_name[args.wordvec_src]+'.txt', 'r').read().splitlines()
+vdct = dict([[v, i] for i, v in enumerate(vocab)])
 assert( len(vocab) == wordvec.shape[0])
 
 #decide vocab_size and embed_dim
@@ -117,6 +118,7 @@ filenames = [filenames[:default_train_num], filenames[default_train_num:],\
 def is_train(mode): return mode == 0
 def is_valid(mode): return mode == 1
 def is_test(mode): return mode == 2
+def is_gen(mode): return mode == 3
 
 def get_single_example(para):
   '''get one example from TFRecorder file using tensorflow default queue runner'''
@@ -164,6 +166,8 @@ class DepRNN(object):
     cell = tf.contrib.rnn.MultiRNNCell([rnn_cell()] * para.layer_num,\
         state_is_tuple=True)
 
+    self._init = cell.zero_state(para.batch_size, tf.float32)
+
     #using pre-trained word embedding
     W_E = tf.Variable(tf.constant(0.0,\
         shape=[para.vocab_size, para.embed_dim]), trainable=False, name='W_E')
@@ -171,32 +175,39 @@ class DepRNN(object):
     self._embed_init = W_E.assign(self._embedding)
 
     #feed in data in batches
-    one_sent, sq_len = get_single_example(para)
-    batch, seq_len = tf.train.batch([one_sent, sq_len],\
-        batch_size=para.batch_size, dynamic_pad=True)
+    if not is_gen(para.mode):
+      one_sent, sq_len = get_single_example(para)
+      batch, seq_len = tf.train.batch([one_sent, sq_len],\
+          batch_size=para.batch_size, dynamic_pad=True)
 
-    #sparse tensor cannot be sliced
-    batch = tf.sparse_tensor_to_dense(batch)
+      #sparse tensor cannot be sliced
+      batch = tf.sparse_tensor_to_dense(batch)
 
-    #seq_len is for dynamic_rnn
-    seq_len = tf.to_int32(seq_len)
+      #seq_len is for dynamic_rnn
+      seq_len = tf.to_int32(seq_len)
 
-    #x and y differ by one position
-    batch_x = batch[:, :-1]
-    batch_y = batch[:, 1:]
+      #x and y differ by one position
+      batch_x = batch[:, :-1]
+      batch_y = batch[:, 1:]
+      self._input = batch_x
 
-    #if testing, need to know the word ids
-    if is_test(para.mode): self._target = batch_y
+      #if testing, need to know the word ids
+      if is_test(para.mode): self._target = batch_y
+    else:
+      self._input = tf.placeholder(tf.int32, [1, 1])
+      seq_len = [1]
 
     #word_id to vector
-    inputs = tf.nn.embedding_lookup(W_E, batch_x)
+    inputs = tf.nn.embedding_lookup(W_E, self._input)
 
     if is_train(para.mode) and para.keep_prob < 1:
       inputs = tf.nn.dropout(inputs, para.keep_prob)
 
     #use dynamic_rnn to build dynamic-time-step rnn
     outputs, state = tf.nn.dynamic_rnn(cell, inputs,\
-        sequence_length=seq_len, dtype=tf.float32)
+        sequence_length=seq_len, dtype=tf.float32,\
+        initial_state=self._init)
+    self._state = state
     output = tf.reshape(outputs, [-1, para.hidden_size])
     #tf.summary.histogram('output', output)
 
@@ -210,8 +221,16 @@ class DepRNN(object):
       loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([logits],\
         [tf.reshape(batch_y, [-1])],\
         [tf.ones([tf.reduce_max(seq_len)*para.batch_size], dtype=tf.float32)])
-
       self._prob = tf.nn.softmax(logits)
+
+    elif is_gen(para.mode):
+      with tf.variable_scope('softmax'):
+        softmax_w = tf.get_variable('w', [para.vocab_size, para.hidden_size],\
+            dtype=tf.float32)
+        softmax_b = tf.get_variable('b', [para.vocab_size], dtype=tf.float32)
+      logits = tf.matmul(output, tf.transpose(softmax_w))+softmax_b
+      self._prob = tf.nn.softmax(logits)
+      return
 
     else:
       with tf.variable_scope('softmax'):
@@ -242,6 +261,12 @@ class DepRNN(object):
   def prob(self): return self._prob
   @property
   def target(self): return self._target
+  @property
+  def input(self): return self._input
+  @property
+  def state(self): return self._state
+  @property
+  def init(self): return self._init
 
 def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
@@ -270,7 +295,7 @@ def run_epoch(sess, model, args):
 with tf.Graph().as_default():
   initializer = tf.random_uniform_initializer(-args.init_scale, args.init_scale)
 
-  #mode: 0->train, 1->valid, 2->test
+  #mode: 0->train, 1->valid, 2->test, 3->gen
   with tf.name_scope('train'):
     train_args = copy.deepcopy(args)
     with tf.variable_scope('model', reuse=None, initializer=initializer):
@@ -288,6 +313,12 @@ with tf.Graph().as_default():
       test_args.mode = 2
       test_args.batch_size = 5
       test_model = DepRNN(para=test_args)
+  with tf.name_scope('gen'):
+    gen_args = copy.deepcopy(args)
+    with tf.variable_scope('model', reuse=True, initializer=initializer):
+      gen_args.mode = 3
+      gen_args.batch_size = 1
+      gen_model = DepRNN(para=gen_args)
 
   sv = tf.train.Supervisor(logdir='./logs/')
   with sv.managed_session() as sess:
@@ -300,6 +331,20 @@ with tf.Graph().as_default():
       if args.train_num < 522:
         valid_perplexity = run_epoch(sess, valid_model, valid_args)
         if i%20 == 0: print('Epoch: %d Valid Perplexity: %.4f'%(i, valid_perplexity))
+
+    print('waiting for an input word...')
+    state = sess.run(gen_model.init)
+    word = str(input())
+    while True:
+      fetches = {'prob':gen_model.prob, 'state':gen_model.state}
+      fdct = {gen_model.input: [[vdct[word] if word in vocab else 0]]}
+      for i, (c, h) in enumerate(gen_model.init):
+        fdct[c] = state[i].c
+        fdct[h] = state[i].h
+      vals = sess.run(fetches, feed_dict=fdct)
+      word = vocab[ np.argmax(vals['prob']) ]
+      state = vals['state']
+      print(' '+word)
 
     with open('submission/basic_lstm2.csv', 'w') as f:
       wrtr = csv.writer(f)
