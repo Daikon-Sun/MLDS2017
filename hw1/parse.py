@@ -94,6 +94,7 @@ def Parse(f, writer, dependency_tree, quote_split, comma_split,
           words_id = []
           traverse_tree(writer, tree, 0, words_id)
       elif writer is None:
+        sys.stdout.write( str(len(words)) + '\n' )
         for word in words:
           if word in corpus:
             corpus[ word ] += 1
@@ -114,6 +115,8 @@ def Parse(f, writer, dependency_tree, quote_split, comma_split,
                 int64_list=tf.train.Int64List(value=words_id)),
               'len': tf.train.Feature(
                 int64_list=tf.train.Int64List(value=[len(words_id)]))}))
+        serialized = example.SerializeToString()
+        writer.write(serialized)
     return
   """End of nltk parse"""
 
