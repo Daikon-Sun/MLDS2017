@@ -9,8 +9,19 @@
 - python 3.6.0
 - spacy 1.6.0 (if dependency tree needed)
 - nltk 3.2.2 (if dependency tree needed)
+- `nltk.data english.pickle`
 - `python -m spacy.en.download all` should be run first to download data for
 training grammar model.(if dependency tree needed)
+
+To download `nltk.data english.pickle`, go to a python shell:
+```
+>>> import nltk
+>>> nltk.download()
+>>> Downloader> d
+Download which package (l=list; x=cancel)?
+  Identifier> punkt
+```
+Then, the required data will be sucessfully downloaded.
 
 ### Usage
 Running following command under `/hw1` directory.
@@ -31,7 +42,7 @@ $ ./parse.py -h
 ```
 
 Normal sentences
-- Time consumed is about `2 mins`.
+- Time consumed is about `16 mins`.
 
 Dependency tree
 - Memory usage is about `2 GB`.

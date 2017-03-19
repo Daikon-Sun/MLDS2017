@@ -4,6 +4,9 @@ import re, string
 import os, sys
 import numpy as np
 import tensorflow as tf
+from tqdm import tqdm
+from nltk.tokenize import sent_tokenize
+from nltk.tokenize import word_tokenize
 
 # Generating dependency tree
 def to_nltk_tree(node):
@@ -64,7 +67,7 @@ def traverse_tree(writer, tree, dep, words_id):
   
 # Parse the given content into dependency trees
 def Parse(f, writer, dependency_tree, quote_split, comma_split,
-          min_words, max_words, slice_out):
+          min_words, max_words, slice_out, self_parse):
   content = re.sub('\n|\r', ' ', ''.join( i for i in f ))
   if slice_out:
     ret = re.search(r"\bC[hH][aA][pP][tT][eE][rR] (I|One|ONE)\b", content)
@@ -72,6 +75,48 @@ def Parse(f, writer, dependency_tree, quote_split, comma_split,
     ret = re.search(r"\bEnd of (|The )Project\b", content)
     ed_idx = len(content) if ret is None else ret.start()
     content = content[st_idx:ed_idx]
+
+  global count_sentences
+  global unk_words
+  global total_words
+
+  if not self_parse:
+    for sent in sent_tokenize(content):
+      if args.debug:
+        sys.stderr.write(sent+'\n')
+      words = word_tokenize(sent.lower())
+      if dependency_tree:
+        if len(words) < min_words or len(words) > max_words:
+          continue
+        for sub_sent in en_nlp(sent).sents:
+          tree = to_nltk_tree(sub_sent.root)
+          if tree == None or type(tree) == str: continue
+          words_id = []
+          traverse_tree(writer, tree, 0, words_id)
+      elif writer is None:
+        for word in words:
+          if word in corpus:
+            corpus[ word ] += 1
+          else:
+            corpus[ word ] = 1
+      else:
+        if len(words) < min_words or len(words) > max_words: continue
+        count_sentences += 1
+        words_id = []
+        for word in words:
+          words_id.append(0 if word not in vocab_table else vocab_table[word])
+        unk_words += sum(1 if i == 0 else 0 for i in words_id)
+        total_words += len(words_id)
+        example = tf.train.Example(
+          features=tf.train.Features(
+            feature={
+              'content': tf.train.Feature(
+                int64_list=tf.train.Int64List(value=words_id)),
+              'len': tf.train.Feature(
+                int64_list=tf.train.Int64List(value=[len(words_id)]))}))
+    return
+  """End of nltk parse"""
+
   content = re.sub('[,]',' , ',content)
   for cc in ['Mr','Mrs','Ms']:
     content = re.sub(cc+'.', cc, content)
@@ -94,44 +139,71 @@ def Parse(f, writer, dependency_tree, quote_split, comma_split,
         if tree == None or type(tree) == str: continue
         words_id = []
         traverse_tree(writer, tree, 0, words_id)
+    elif writer is None:
+      for word in sent.split():
+        if word in corpus:
+          corpus[ word ] += 1
+        else:
+          corpus[ word ] = 1
     else:
-      if writer is None:
-        for word in sent.split():
-          if word in corpus:
-            corpus[ word ] += 1
-          else:
-            corpus[ word ] = 1
-      else:
-        sent = sent.split()
-        if len(sent) < min_words or len(sent) > max_words: continue
-        global count_sentences
-        count_sentences += 1
-        words_id = []
-        for word in sent:
-          words_id.append(0 if word not in vocab_table else vocab_table[word])
-        global unk_words
-        global total_words
-        unk_words += sum(1 if i == 0 else 0 for i in words_id)
-        total_words += len(words_id)
-        example = tf.train.Example(
-          features=tf.train.Features(
-            feature={
-              'content': tf.train.Feature(
-                int64_list=tf.train.Int64List(value=words_id)),
-              'len': tf.train.Feature(
-                int64_list=tf.train.Int64List(value=[len(words_id)]))}))
-        serialized = example.SerializeToString()
-        writer.write(serialized)
+      sent = sent.split()
+      if len(sent) < min_words or len(sent) > max_words: continue
+      count_sentences += 1
+      words_id = []
+      for word in sent:
+        words_id.append(0 if word not in vocab_table else vocab_table[word])
+      unk_words += sum(1 if i == 0 else 0 for i in words_id)
+      total_words += len(words_id)
+      example = tf.train.Example(
+        features=tf.train.Features(
+          feature={
+            'content': tf.train.Feature(
+              int64_list=tf.train.Int64List(value=words_id)),
+            'len': tf.train.Feature(
+              int64_list=tf.train.Int64List(value=[len(words_id)]))}))
+      serialized = example.SerializeToString()
+      writer.write(serialized)
 
-def Parse_testing(f, writer, dependency_tree):
+def Parse_testing(f, writer, dependency_tree, self_parse):
   number_of_tree = []
-  for question in f:
+  global counter
+  for question in tqdm(f):
     ret = question.split(',')
     if ret[0] == 'id':
       continue
     sent = ','.join(ret[1:-5])
     for choice in ret[-5:]:
       cand = re.sub('_____', choice, sent)
+      if not self_parse:
+        words = word_tokenize(cand.lower())
+        if writer is None:
+          for word in words:
+            corpus_testing[ word ] = 1  
+        elif dependency_tree:
+          counter = 0
+          for sent in en_nlp(cand.lower()).sents:
+            tree = to_nltk_tree(sent.root)
+            if tree == None or type(tree) == str: continue
+            words_id = []
+            traverse_tree(writer, tree, 0, words_id)
+          number_of_tree.append(counter)
+        else:
+          if args.debug:
+            sys.stderr.write(cand + '\n')
+          words_id = []
+          for word in words:
+            words_id.append(0 if word not in vocab_table else vocab_table[word])
+          example = tf.train.Example(
+            features=tf.train.Features(
+              feature={
+                'content': tf.train.Feature(
+                  int64_list=tf.train.Int64List(value=words_id)),
+                'len': tf.train.Feature(
+                  int64_list=tf.train.Int64List(value=[len(words_id)]))}))
+          serialized = example.SerializeToString()
+          writer.write(serialized)
+        return
+      """End of nltk parse"""
       for cc in ['Mr','Mrs','Ms']:
         cand = re.sub(cc+'.', cc, cand)
       for cc in '.!?;,':
@@ -144,7 +216,6 @@ def Parse_testing(f, writer, dependency_tree):
         for word in cand.lower().split():
           corpus_testing[ word ] = 1  
       elif dependency_tree:
-        global counter
         counter = 0
         for sent in en_nlp(cand.lower()).sents:
           tree = to_nltk_tree(sent.root)
@@ -216,6 +287,10 @@ if __name__ == '__main__':
         help='If the sentence has more than MAX_WORDS words, '
              'it won\'t be taken into consideration.(Marks also count)'
              '(default: %(default)s)',)
+  argparser.add_argument('-p', '--self_parse',
+        help='Parsed by self written method w/o pretrained knowledge'
+             ' (default: parsed by nltk datas)',
+        action='store_true')
   argparser.add_argument('-s', '--slice_out',
         help='Head and tail part of content will be sliced out.'
              ' (default: It won\'t be sliced out)',
@@ -242,19 +317,21 @@ if __name__ == '__main__':
 
   corpus = dict()
   corpus_testing = dict()
+  global count_sentences
+  count_sentences = 0
 
   sys.stderr.write('start parsing datas...\n')
   with open(args.file_list,'r') as file_list:
-    for file_name in file_list:
+    for file_name in tqdm(file_list):
       with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
         if args.debug:
           sys.stderr.write('start parsing file ' + file_name[:-1] + '\n')
         Parse(f, None, False, args.quote_split, args.comma_split,
-              args.min_words, args.max_words, args.slice_out)
+              args.min_words, args.max_words, args.slice_out, args.self_parse)
         if args.debug:
           sys.stderr.write('finished parsing file ' + file_name[:-1] + '\n')
   with open(args.testing_data,'r',encoding="utf-8",errors='ignore') as f:
-    Parse_testing(f, None, args.dependency_tree)
+    Parse_testing(f, None, args.dependency_tree, args.self_parse)
 
   sys.stderr.write('start embedding words...\n')
   with open(args.glove_file,'r') as glove:
@@ -264,7 +341,7 @@ if __name__ == '__main__':
       dimension = int(args.glove_file.split('.')[2][:-1])
       word_list.write("<unk>\n")
       res = [[]]
-      for word in glove:
+      for word in tqdm(glove):
         ret = word.split()
         if (ret[0] in corpus and corpus[ret[0]] >= args.count) or \
             ret[0] in corpus_testing:
@@ -288,16 +365,15 @@ if __name__ == '__main__':
   global counter
   global unk_words
   global total_words
-  global count_sentences
-  unk_words, total_words, count_sentences = 0, 0, 0
+  unk_words, total_words = 0, 0
   with open(args.file_list,'r') as file_list:
-    for file_name in file_list:
+    for file_name in tqdm(file_list):
       with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
         if args.debug:
           sys.stderr.write('start converting file ' + file_name[:-1] + '\n')
         writer = tf.python_io.TFRecordWriter(args.output_dir+'/'+file_name[21:-5]+'.tfr')
         Parse(f, writer, args.dependency_tree, args.quote_split, args.comma_split,
-              args.min_words, args.max_words)
+              args.min_words, args.max_words, args.slice_out, args.self_parse)
   sys.stderr.write('unk_words: %d, total_words: %d, perc: %f%%\n' %
                    (unk_words, total_words, unk_words * 100 / total_words))
   sys.stderr.write('Number of sentences: %d\n' % count_sentences)
@@ -306,6 +382,6 @@ if __name__ == '__main__':
                    'into the format of TFRecoder file...\n')
   with open(args.testing_data,'r',encoding="utf-8",errors='ignore') as f:
     writer = tf.python_io.TFRecordWriter(args.output_file)
-    Parse_testing(f, writer, args.dependency_tree)
+    Parse_testing(f, writer, args.dependency_tree, args.self_parse)
 
   sys.stderr.write('cooling down...\n')
