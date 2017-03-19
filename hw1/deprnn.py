@@ -12,14 +12,14 @@ import csv
 #default values (in alphabetic order)
 default_batch_size = 256
 default_data_dir = './Training_Data_19000/'
-default_hidden_size = 512
+default_hidden_size = 256
 default_init_scale = 0.0001
-default_keep_prob = 0.3
-default_layer_num = 3
-default_learning_rate = 0.00004
+default_keep_prob = 0.7
+default_layer_num = 2
+default_learning_rate = 0.0001
 default_rnn_type = 2
-default_max_grad_norm = 0.1
-default_max_epoch = 40000
+default_max_grad_norm = 1
+default_max_epoch = 10000
 default_num_sampled = 2000
 default_optimizer = 4
 default_train_num = 522
@@ -45,57 +45,57 @@ def restricted_float(x):
     if x < 0.0 or x > 1.0:
         raise argparse.ArgumentTypeError('%r not in range [0.0, 1.0]'%x)
     return x
-
-#argument parser
-parser = argparse.ArgumentParser(description=\
-    'Dependency-tree-based rnn for MSR sentence completion challenge.')
-parser.add_argument('--wordvec_src', type=int, default=default_wordvec_src, nargs='?',\
-    choices=range(0, 7),\
-    help='Decide the source of wordvec --> [0:debug-mode], [1:glove.6B.50d],\
-    [2:glove.6B.100d], [3:glove.6B.200d], [4:glove.6B.300d], [5:glove.42B],\
-    [6:glove.840B]. (default:%d)'%default_wordvec_src)
-parser.add_argument('--layer_num', type=int, default=default_layer_num, nargs='?',\
-    help='Number of rnn layer. (default:%d)'%default_layer_num)
-parser.add_argument('--num_sampled', type=int, default=default_num_sampled, nargs='?',\
-    help='Number of classes to be sampled in sampled_softmax_loss (default:%d)'\
-    %default_num_sampled)
-parser.add_argument('--optimizer', type=int, default=default_optimizer, nargs='?',\
-    choices=range(0, 6),\
-    help='Optimizers --> [0: GradientDescent], [1:Adadelta], [2:Adagrad],\
-    [3:Momentum], [4:Adam], [5:RMSProp]. (default:%d)'%default_optimizer)
-parser.add_argument('--rnn_type', type=int, default=default_rnn_type, nargs='?',\
-    choices=range(0, 4),\
-    help='Type of rnn cell --> [0:Basic], [1:basic LSTM], [2:full LSTM], [3:GRU].\
-        (default:%d)'%default_rnn_type)
-parser.add_argument('--learning_rate', type=float, default=default_learning_rate,\
-    nargs='?', help='Value of initial learning rate. (default:%r)'\
-    %default_learning_rate)
-parser.add_argument('--max_grad_norm', type=float, default=default_max_grad_norm,\
-    nargs='?', help='Maximum gradient norm allowed. (default:%r)'\
-    %default_max_grad_norm)
-parser.add_argument('--init_scale', type=float, default=default_init_scale,\
-    nargs='?', help='initialize scale. (default:%r)'%default_init_scale)
-parser.add_argument('--use_dep', type=t_or_f, default=default_use_dep, nargs='?',\
-    choices=[False, True],\
-    help='Use dependency tree or not. (default:%r)'%default_use_dep)
-parser.add_argument('--use_bi', type=t_or_f, default=default_use_bi, nargs='?',\
-    choices=[False, True],\
-    help='Use bidirectional rnn or not. (default:%r)'%default_use_bi)
-parser.add_argument('--max_epoch', type=int, default=default_max_epoch, nargs='?',\
-    help='Maximum epoch to be trained. (default:%d)'%default_max_epoch)
-parser.add_argument('--train_num', type=int, default=default_train_num, nargs='?',\
-    choices=range(260, 523),\
-    help='Number of files out of the total 522 files to be trained. (default:%d)'\
-    %default_train_num)
-parser.add_argument('--keep_prob', type=restricted_float,\
-    default=default_keep_prob, nargs='?',\
-    help='Keeping-Probability for dropout layer. (default:%r)'%default_keep_prob)
-parser.add_argument('--batch_size', type=int, default=default_batch_size, nargs='?',\
-    help='Mini-batch size while training. (default:%d)'%default_batch_size)
-parser.add_argument('--hidden_size', type=int, default=default_hidden_size, nargs='?',\
-    help='Dimension of hidden layer. (default:%d)'%default_hidden_size)
-parser.add_argument('--data_dir', type=str, default=default_data_dir, nargs='?',\
-    help='Directory where the data are placed. (default:%s)'%default_data_dir)
+if True:
+  #argument parser
+  parser = argparse.ArgumentParser(description=\
+      'Dependency-tree-based rnn for MSR sentence completion challenge.')
+  parser.add_argument('--wordvec_src', type=int, default=default_wordvec_src,\
+      nargs='?', choices=range(0, 7),\
+      help='Decide the source of wordvec --> [0:debug-mode], [1:glove.6B.50d],\
+      [2:glove.6B.100d], [3:glove.6B.200d], [4:glove.6B.300d], [5:glove.42B],\
+      [6:glove.840B]. (default:%d)'%default_wordvec_src)
+  parser.add_argument('--layer_num', type=int, default=default_layer_num, nargs='?',\
+      help='Number of rnn layer. (default:%d)'%default_layer_num)
+  parser.add_argument('--num_sampled', type=int, default=default_num_sampled, nargs='?',\
+      help='Number of classes to be sampled in sampled_softmax_loss (default:%d)'\
+      %default_num_sampled)
+  parser.add_argument('--optimizer', type=int, default=default_optimizer, nargs='?',\
+      choices=range(0, 6),\
+      help='Optimizers --> [0: GradientDescent], [1:Adadelta], [2:Adagrad],\
+      [3:Momentum], [4:Adam], [5:RMSProp]. (default:%d)'%default_optimizer)
+  parser.add_argument('--rnn_type', type=int, default=default_rnn_type, nargs='?',\
+      choices=range(0, 4),\
+      help='Type of rnn cell --> [0:Basic], [1:basic LSTM], [2:full LSTM], [3:GRU].\
+          (default:%d)'%default_rnn_type)
+  parser.add_argument('--learning_rate', type=float, default=default_learning_rate,\
+      nargs='?', help='Value of initial learning rate. (default:%r)'\
+      %default_learning_rate)
+  parser.add_argument('--max_grad_norm', type=float, default=default_max_grad_norm,\
+      nargs='?', help='Maximum gradient norm allowed. (default:%r)'\
+      %default_max_grad_norm)
+  parser.add_argument('--init_scale', type=float, default=default_init_scale,\
+      nargs='?', help='initialize scale. (default:%r)'%default_init_scale)
+  parser.add_argument('--use_dep', type=t_or_f, default=default_use_dep, nargs='?',\
+      choices=[False, True],\
+      help='Use dependency tree or not. (default:%r)'%default_use_dep)
+  parser.add_argument('--use_bi', type=t_or_f, default=default_use_bi, nargs='?',\
+      choices=[False, True],\
+      help='Use bidirectional rnn or not. (default:%r)'%default_use_bi)
+  parser.add_argument('--max_epoch', type=int, default=default_max_epoch, nargs='?',\
+      help='Maximum epoch to be trained. (default:%d)'%default_max_epoch)
+  parser.add_argument('--train_num', type=int, default=default_train_num, nargs='?',\
+      choices=range(260, 523),\
+      help='Number of files out of the total 522 files to be trained. (default:%d)'\
+      %default_train_num)
+  parser.add_argument('--keep_prob', type=restricted_float,\
+      default=default_keep_prob, nargs='?',\
+      help='Keeping-Probability for dropout layer. (default:%r)'%default_keep_prob)
+  parser.add_argument('--batch_size', type=int, default=default_batch_size, nargs='?',\
+      help='Mini-batch size while training. (default:%d)'%default_batch_size)
+  parser.add_argument('--hidden_size', type=int, default=default_hidden_size, nargs='?',\
+      help='Dimension of hidden layer. (default:%d)'%default_hidden_size)
+  parser.add_argument('--data_dir', type=str, default=default_data_dir, nargs='?',\
+      help='Directory where the data are placed. (default:%s)'%default_data_dir)
 
 args = parser.parse_args()
 
@@ -156,7 +156,7 @@ class DepRNN(object):
 
     rnn_cell = unit_cell
 
-		#dropout layer
+    #dropout layer
     if is_train(para.mode) and para.keep_prob < 1:
       def rnn_cell():
         return tf.contrib.rnn.DropoutWrapper(\
@@ -173,6 +173,7 @@ class DepRNN(object):
         shape=[para.vocab_size, para.embed_dim]), trainable=False, name='W_E')
     self._embedding = tf.placeholder(tf.float32, [para.vocab_size, para.embed_dim])
     self._embed_init = W_E.assign(self._embedding)
+    self._W_E = W_E
 
     #feed in data in batches
     one_sent, sq_len = get_single_example(para)
@@ -191,7 +192,8 @@ class DepRNN(object):
     self._input = batch_x
 
     #if testing, need to know the word ids
-    if is_test(para.mode): self._target = batch_y
+    self._target = batch_y
+    #if is_test(para.mode): self._target = batch_y
 
     #word_id to vector
     inputs = tf.nn.embedding_lookup(W_E, self._input)
@@ -209,10 +211,10 @@ class DepRNN(object):
           sequence_length=seq_len, dtype=tf.float32,\
           initial_state=self._init)
       output = tf.reshape(outputs, [-1, para.hidden_size])
+    self._output = output
     self._state = state
 
     #tf.summary.histogram('output', output)
-
     if is_test(para.mode):
       with tf.variable_scope('softmax'):
         softmax_w = tf.get_variable('w', [para.vocab_size, para.hidden_size],\
@@ -220,9 +222,6 @@ class DepRNN(object):
         softmax_b = tf.get_variable('b', [para.vocab_size], dtype=tf.float32)
 
       logits = tf.matmul(output, tf.transpose(softmax_w))+softmax_b
-      #loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([logits],\
-      #  [tf.reshape(batch_y, [-1])],\
-      #  [tf.ones([tf.reduce_max(seq_len)*para.batch_size], dtype=tf.float32)])
       self._prob = tf.nn.softmax(logits)
 
     else:
@@ -240,7 +239,8 @@ class DepRNN(object):
       else:
         mask = tf.reshape(mask, [-1])
         loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([logits],\
-          [tf.reshape(batch_y, [-1])], [mask])
+          [tf.reshape(batch_y, [-1])],\
+          [tf.ones([tf.reduce_max(seq_len)*para.batch_size], tf.float32)])
       #loss = tf.nn.sampled_softmax_loss(softmax_w, softmax_b,\
       #  tf.reshape(batch_y, [-1, 1]), output, num_sampled=para.num_sampled,\
       #  num_classes=para.vocab_size)
@@ -268,25 +268,34 @@ class DepRNN(object):
   @property
   def input(self): return self._input
   @property
+  def output(self): return self._output
+  @property
   def state(self): return self._state
   @property
   def init(self): return self._init
   @property
   def seq_len(self): return self._seq_len
+  @property
+  def W_E(self): return self._W_E
 
 def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
   fetches = {}
-
   if not is_test(args.mode):
     fetches['cost'] = model.cost
     fetches['sqlen'] = model.seq_len
+    fetches['output'] = model.output
+    fetches['target'] = model.target
     if is_train(args.mode):
       fetches['eval'] = model.eval
     vals = sess.run(fetches)
     sql = vals['sqlen']
-    #print(sql)
-    #print(vals['cost'])
+    output = vals['output']
+    target = vals['target']
+    #np.set_printoptions(threshold=np.nan, linewidth=190)
+    #print(output)
+    #print(target)
+    #sys.exit()
     return np.exp(vals['cost'])
   else:
     fetches['prob'] = model.prob
@@ -299,6 +308,9 @@ def run_epoch(sess, model, args):
     #shape of choices = 5 x (len(sentence)-1)
     choices = np.array([[prob[k*target.shape[1]+j, target[k, j]]\
         for j in range(target.shape[1])] for k in range(5)])
+    np.set_printoptions(threshold=np.nan, linewidth=194)
+    print(target)
+    print(choices)
 
     return chr(ord('a')+np.argmax(np.sum(np.log(choices), axis=1)))
 
@@ -329,6 +341,8 @@ with tf.Graph().as_default():
 
     #load in pre-trained word-embedding
     sess.run(train_model._embed_init, feed_dict={train_model._embedding: wordvec})
+    sess.run(test_model._embed_init, feed_dict={test_model._embedding: wordvec})
+
     for i in range(1, args.max_epoch+1):
       train_perplexity = run_epoch(sess, train_model, train_args)
       if i%20 == 0: print('Epoch: %d Train Perplexity: %.4f'%(i, train_perplexity))
