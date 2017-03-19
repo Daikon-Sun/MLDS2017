@@ -10,22 +10,22 @@ import copy
 import csv
 
 #default values (in alphabetic order)
-default_batch_size = 256
-default_data_dir = './Training_Data_19000/'
+default_batch_size = 128
+default_data_dir = './Training_Data/'
 default_hidden_size = 256
-default_init_scale = 0.0001
+default_init_scale = 0.001
 default_keep_prob = 0.7
 default_layer_num = 2
 default_learning_rate = 0.0001
-default_rnn_type = 2
+default_rnn_type = 1
 default_max_grad_norm = 1
-default_max_epoch = 10000
+default_max_epoch = 1#17000
 default_num_sampled = 2000
 default_optimizer = 4
 default_train_num = 522
 default_use_bi = False
 default_use_dep = False
-default_wordvec_src = 4
+default_wordvec_src = 5
 optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,\
     tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,\
     tf.train.AdamOptimizer, tf.train.RMSPropOptimizer]
@@ -100,7 +100,7 @@ if True:
 args = parser.parse_args()
 
 #calculate real epochs
-print('training with %.3f epochs!' % ((args.batch_size*args.max_epoch)/1238250))
+print('training with %.3f epochs!' % ((args.batch_size*args.max_epoch)/2077255))
 
 #load in pre-trained word embedding and vocabulary list
 wordvec = np.load('data/wordvec.'+src_name[args.wordvec_src]+'.npy')
@@ -124,8 +124,7 @@ def is_test(mode): return mode == 2
 
 def get_single_example(para):
   '''get one example from TFRecorder file using tensorflow default queue runner'''
-  #f_queue = tf.train.string_input_producer(filenames, num_epochs=None)
-  f_queue = tf.train.string_input_producer(filenames[para.mode], num_epochs=None)
+  f_queue = tf.train.string_input_producer(filenames[para.mode], num_epochs=None, shuffle=False)
   reader = tf.TFRecordReader()
 
   _, serialized_example = reader.read(f_queue)
@@ -189,14 +188,14 @@ class DepRNN(object):
     #x and y differ by one position
     batch_x = batch[:, :-1]
     batch_y = batch[:, 1:]
-    self._input = batch_x
+    self._inputs = batch_x
 
     #if testing, need to know the word ids
     self._target = batch_y
     #if is_test(para.mode): self._target = batch_y
 
     #word_id to vector
-    inputs = tf.nn.embedding_lookup(W_E, self._input)
+    inputs = tf.nn.embedding_lookup(W_E, self._inputs)
 
     if is_train(para.mode) and para.keep_prob < 1:
       inputs = tf.nn.dropout(inputs, para.keep_prob)
@@ -266,7 +265,7 @@ class DepRNN(object):
   @property
   def target(self): return self._target
   @property
-  def input(self): return self._input
+  def inputs(self): return self._inputs
   @property
   def output(self): return self._output
   @property
@@ -286,13 +285,16 @@ def run_epoch(sess, model, args):
     fetches['sqlen'] = model.seq_len
     fetches['output'] = model.output
     fetches['target'] = model.target
+    fetches['inputs'] = model.inputs
     if is_train(args.mode):
       fetches['eval'] = model.eval
     vals = sess.run(fetches)
     sql = vals['sqlen']
     output = vals['output']
     target = vals['target']
-    #np.set_printoptions(threshold=np.nan, linewidth=190)
+    inputs = vals['inputs']
+    np.set_printoptions(threshold=np.nan, linewidth=450)
+    print(inputs)
     #print(output)
     #print(target)
     #sys.exit()
@@ -308,9 +310,9 @@ def run_epoch(sess, model, args):
     #shape of choices = 5 x (len(sentence)-1)
     choices = np.array([[prob[k*target.shape[1]+j, target[k, j]]\
         for j in range(target.shape[1])] for k in range(5)])
-    np.set_printoptions(threshold=np.nan, linewidth=194)
-    print(target)
-    print(choices)
+    #np.set_printoptions(threshold=np.nan, linewidth=194)
+    #print(target)
+    #print(choices)
 
     return chr(ord('a')+np.argmax(np.sum(np.log(choices), axis=1)))
 
@@ -335,7 +337,6 @@ with tf.Graph().as_default():
       test_args.mode = 2
       test_args.batch_size = 5
       test_model = DepRNN(para=test_args)
-
   sv = tf.train.Supervisor(logdir='./logs/')
   with sv.managed_session() as sess:
 
