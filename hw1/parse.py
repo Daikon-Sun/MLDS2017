@@ -94,7 +94,6 @@ def Parse(f, writer, dependency_tree, quote_split, comma_split,
           words_id = []
           traverse_tree(writer, tree, 0, words_id)
       elif writer is None:
-        sys.stdout.write( str(len(words)) + '\n' )
         for word in words:
           if word in corpus:
             corpus[ word ] += 1
@@ -170,7 +169,7 @@ def Parse(f, writer, dependency_tree, quote_split, comma_split,
 def Parse_testing(f, writer, dependency_tree, self_parse):
   number_of_tree = []
   global counter
-  for question in tqdm(f):
+  for question in f:
     ret = question.split(',')
     if ret[0] == 'id':
       continue
@@ -324,6 +323,8 @@ if __name__ == '__main__':
   count_sentences = 0
 
   sys.stderr.write('start parsing datas...\n')
+  with open(args.testing_data,'r',encoding="utf-8",errors='ignore') as f:
+    Parse_testing(f, None, args.dependency_tree, args.self_parse)
   with open(args.file_list,'r') as file_list:
     for file_name in tqdm(file_list):
       with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
@@ -333,8 +334,6 @@ if __name__ == '__main__':
               args.min_words, args.max_words, args.slice_out, args.self_parse)
         if args.debug:
           sys.stderr.write('finished parsing file ' + file_name[:-1] + '\n')
-  with open(args.testing_data,'r',encoding="utf-8",errors='ignore') as f:
-    Parse_testing(f, None, args.dependency_tree, args.self_parse)
 
   sys.stderr.write('start embedding words...\n')
   with open(args.glove_file,'r') as glove:
