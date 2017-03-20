@@ -10,22 +10,22 @@ import copy
 import csv
 
 #default values (in alphabetic order)
-default_batch_size = 128
+default_batch_size = 256
 default_data_dir = './Training_Data/'
 default_hidden_size = 256
-default_init_scale = 0.001
-default_keep_prob = 0.7
+default_init_scale = 0.04
+default_keep_prob = 0.75
 default_layer_num = 2
-default_learning_rate = 0.0001
-default_rnn_type = 1
-default_max_grad_norm = 1
-default_max_epoch = 1#17000
-default_num_sampled = 2000
+default_learning_rate = 0.001
+default_rnn_type = 2
+default_max_grad_norm = 5
+default_max_epoch = 0#35000
+default_num_sampled = 4000
 default_optimizer = 4
 default_train_num = 522
-default_use_bi = False
+default_use_bi = True
 default_use_dep = False
-default_wordvec_src = 5
+default_wordvec_src = 4
 optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,\
     tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,\
     tf.train.AdamOptimizer, tf.train.RMSPropOptimizer]
@@ -84,7 +84,6 @@ if True:
   parser.add_argument('--max_epoch', type=int, default=default_max_epoch, nargs='?',\
       help='Maximum epoch to be trained. (default:%d)'%default_max_epoch)
   parser.add_argument('--train_num', type=int, default=default_train_num, nargs='?',\
-      choices=range(260, 523),\
       help='Number of files out of the total 522 files to be trained. (default:%d)'\
       %default_train_num)
   parser.add_argument('--keep_prob', type=restricted_float,\
@@ -100,13 +99,13 @@ if True:
 args = parser.parse_args()
 
 #calculate real epochs
-print('training with %.3f epochs!' % ((args.batch_size*args.max_epoch)/2077255))
+print('training with %.3f epochs!' % ((args.batch_size*args.max_epoch)/2022965))
 
 #load in pre-trained word embedding and vocabulary list
 wordvec = np.load('data/wordvec.'+src_name[args.wordvec_src]+'.npy')
 vocab = open('data/vocab.'+src_name[args.wordvec_src]+'.txt', 'r').read().splitlines()
-vdct = dict([[v, i] for i, v in enumerate(vocab)])
-assert( len(vocab) == wordvec.shape[0])
+#vdct = dict([[v, i] for i, v in enumerate(vocab)])
+assert len(vocab) == wordvec.shape[0]
 
 #decide vocab_size and embed_dim
 args.vocab_size, args.embed_dim = wordvec.shape
@@ -115,6 +114,7 @@ print(wordvec.shape)
 #load in file list for training and validation
 filenames = open('training_list', 'r').read().splitlines()
 filenames = [ args.data_dir+ff[21:-4]+'.tfr' for ff in filenames ]
+assert len(filenames) == 522
 filenames = [filenames[:default_train_num], filenames[default_train_num:],\
     ['testing_data.tfr']]
 
@@ -191,7 +191,8 @@ class DepRNN(object):
     self._inputs = batch_x
 
     #if testing, need to know the word ids
-    self._target = batch_y
+    self._f_target = batch_y
+    self._b_target = batch_x
     #if is_test(para.mode): self._target = batch_y
 
     #word_id to vector
@@ -204,7 +205,7 @@ class DepRNN(object):
     if para.use_bi:
       outputs, state = tf.nn.bidirectional_dynamic_rnn(cell, cell, inputs,\
           sequence_length=seq_len, dtype=tf.float32)
-      output = tf.reshape(tf.concat(outputs, 2), [-1, para.hidden_size])
+      output = tf.reshape(tf.concat(outputs, 0), [-1, para.hidden_size])
     else:
       outputs, state = tf.nn.dynamic_rnn(cell, inputs,\
           sequence_length=seq_len, dtype=tf.float32,\
@@ -220,8 +221,7 @@ class DepRNN(object):
             dtype=tf.float32)
         softmax_b = tf.get_variable('b', [para.vocab_size], dtype=tf.float32)
 
-      logits = tf.matmul(output, tf.transpose(softmax_w))+softmax_b
-      self._prob = tf.nn.softmax(logits)
+      self._prob = tf.nn.softmax(tf.matmul(output, tf.transpose(softmax_w))+softmax_b)
 
     else:
       with tf.variable_scope('softmax'):
@@ -229,17 +229,18 @@ class DepRNN(object):
             dtype=tf.float32)
         softmax_b = tf.get_variable('b', [para.vocab_size], dtype=tf.float32)
 
-      logits = tf.matmul(output, tf.transpose(softmax_w))+softmax_b
-      mask = tf.sequence_mask(seq_len, dtype=tf.float32)
       if para.use_bi:
-        mask = tf.reshape(tf.concat([mask, mask], 1), [-1])
-        loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([logits],\
-            [tf.reshape(tf.concat([batch_y, batch_x], 1), [-1])], [mask])
+        loss = tf.nn.sampled_softmax_loss(softmax_w, softmax_b,\
+            tf.reshape(tf.concat([batch_y, batch_x], 1), [-1, 1]), output,\
+            num_sampled=para.num_sampled, num_classes=para.vocab_size)
+        #mask = tf.reshape(tf.concat([mask, mask], 1), [-1])
+        #loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([logits],\
+        #    [tf.reshape(tf.concat([batch_y, batch_x], 1), [-1])], [mask])
       else:
-        mask = tf.reshape(mask, [-1])
+        #mask = tf.reshape(mask, [-1])
         loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([logits],\
-          [tf.reshape(batch_y, [-1])],\
-          [tf.ones([tf.reduce_max(seq_len)*para.batch_size], tf.float32)])
+            [tf.reshape(batch_y, [-1])],\
+            [tf.ones([tf.reduce_max(seq_len)*para.batch_size], tf.float32)])
       #loss = tf.nn.sampled_softmax_loss(softmax_w, softmax_b,\
       #  tf.reshape(batch_y, [-1, 1]), output, num_sampled=para.num_sampled,\
       #  num_classes=para.vocab_size)
@@ -263,7 +264,9 @@ class DepRNN(object):
   @property
   def prob(self): return self._prob
   @property
-  def target(self): return self._target
+  def f_target(self): return self._f_target
+  @property
+  def b_target(self): return self._b_target
   @property
   def inputs(self): return self._inputs
   @property
@@ -282,39 +285,48 @@ def run_epoch(sess, model, args):
   fetches = {}
   if not is_test(args.mode):
     fetches['cost'] = model.cost
-    fetches['sqlen'] = model.seq_len
     fetches['output'] = model.output
-    fetches['target'] = model.target
-    fetches['inputs'] = model.inputs
     if is_train(args.mode):
       fetches['eval'] = model.eval
     vals = sess.run(fetches)
-    sql = vals['sqlen']
     output = vals['output']
-    target = vals['target']
-    inputs = vals['inputs']
-    np.set_printoptions(threshold=np.nan, linewidth=450)
-    print(inputs)
-    #print(output)
+    #np.set_printoptions(threshold=np.nan, linewidth=200)
+    #print(inputs)
     #print(target)
-    #sys.exit()
+    #print(sql)
     return np.exp(vals['cost'])
   else:
     fetches['prob'] = model.prob
-    fetches['target'] = model.target
+    fetches['f_target'] = model.f_target
+    fetches['b_target'] = model.b_target
 
     vals = sess.run(fetches)
     prob = vals['prob']
-    target = vals['target']
+    assert prob.shape[0]%2 == 0
+
+    f_target = vals['f_target']
+    b_target = vals['b_target']
+    assert f_target.shape == b_target.shape
 
     #shape of choices = 5 x (len(sentence)-1)
-    choices = np.array([[prob[k*target.shape[1]+j, target[k, j]]\
-        for j in range(target.shape[1])] for k in range(5)])
-    #np.set_printoptions(threshold=np.nan, linewidth=194)
-    #print(target)
-    #print(choices)
+    sent_len = f_target.shape[1]
+    f_choices = np.array([[prob[k*sent_len+j, f_target[k, j]]\
+        for j in range(sent_len)] for k in range(5)])
 
-    return chr(ord('a')+np.argmax(np.sum(np.log(choices), axis=1)))
+    if not args.use_bi:
+      return chr(ord('a')+np.argmax(np.sum(np.log(f_choices), axis=1)))
+
+    b_choices = np.array([[prob[(5+k)*sent_len+j, b_target[k, j]]\
+        for j in range(sent_len)] for k in range(5)])
+    #np.set_printoptions(threshold=np.nan, linewidth=194)
+    #print(b_target)
+    #print(b_choices)
+    #print(f_target)
+    #print(f_choices)
+    #sys.exit()
+    return chr(ord('a')+np.argmax(np.sum(np.log(f_choices), axis=1)))
+
+    return chr(ord('a')+np.argmax(np.sum(np.log(f_choices)+0.001*np.log(b_choices), axis=1)))
 
 with tf.Graph().as_default():
   initializer = tf.random_uniform_initializer(-args.init_scale, args.init_scale)
