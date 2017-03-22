@@ -26,35 +26,51 @@ def valid(sentence):
       return False
     if has_alpha:
       if not any(c in ['a','e','i','o','u','y'] for c in word):
-        return False      
+        return False
   return True
 
-def traverse_tree(writer, tree, dep, words_id):
-  if isinstance(tree, string_types):
+def word_normalize(word):
+  if any(c.isdigit() for c in word):
+    return '0'
+  if any(c.isalpha() for c in word):
+    if not all(c.isalpha() for c in word):
+      if len(word)>1 and word[0]=='\'' and word[1].isalpha() and len(word)<4:
+        return word
+      return ''.join(c if c.isalpha() else '' for c in word)
+  return word
+
+def traverse_tree(writer, tree, dep, words_id, useful, choice):
+  if isinstance(tree, str):
     word = tree
   else:
-    word = tree._label if isinstance(tree._label, string_types) \
+    word = tree._label if isinstance(tree._label, str) \
                        else unicode_repr(self._label)
   if len(words_id) <= dep:
     words_id.append(0)
-  words_id[dep] = 0 if word not in vocab_table else vocab_table[word]
+  if word == choice:
+    useful = True
+  if word == '*':
+    dep -= 1
+  else:
+    words_id[dep] = 0 if word not in vocab_table else vocab_table[word]
   leaf = True
-  if not isinstance(tree, string_types):
+  if not isinstance(tree, str):
     for child in tree:
       leaf = False
       if isinstance(child, Tree):
-        traverse_tree(writer, child, dep+1, words_id)
+        traverse_tree(writer, child, dep+1, words_id, useful, choice)
       elif isinstance(child, tuple):
         for cc in child:
-          traverse_tree(writer, cc, dep+1, words_id)
-      elif isinstance(child, string_types):
-        traverse_tree(writer, child, dep+1, words_id)
+          traverse_tree(writer, cc, dep+1, words_id, useful, choice)
+      elif isinstance(child, str):
+        traverse_tree(writer, child, dep+1, words_id, useful, choice)
       else:
-        traverse_tree(writer, unicode_repr(child), dep+1, words_id)
-  if leaf:
+        traverse_tree(writer, unicode_repr(child), dep+1, words_id, useful, choice)
+  if leaf and useful:
     global count_sentences
+    global counter_tree
     count_sentences += 1
-    counter += 1
+    counter_tree += 1
     example = tf.train.Example(
       features=tf.train.Features(
         feature={
@@ -64,7 +80,7 @@ def traverse_tree(writer, tree, dep, words_id):
           int64_list=tf.train.Int64List(value=[dep+1]))}))
     serialized = example.SerializeToString()
     writer.write(serialized)
-  
+
 # Parse the given content into dependency trees
 def Parse(f, writer, dependency_tree, quote_split, comma_split,
           min_words, max_words, slice_out, self_parse):
@@ -85,26 +101,32 @@ def Parse(f, writer, dependency_tree, quote_split, comma_split,
       if args.debug:
         sys.stderr.write(sent+'\n')
       words = word_tokenize(sent.lower())
+      mod_sent = ' '.join( word_normalize(w) for w in words )
+      if not any(word_normalize(word) in corpus_testing and\
+                 word_normalize(word).isalpha() for word in words):
+        continue
       if dependency_tree:
         if len(words) < min_words or len(words) > max_words:
           continue
-        for sub_sent in en_nlp(sent).sents:
+        for sub_sent in en_nlp(mod_sent).sents:
           tree = to_nltk_tree(sub_sent.root)
           if tree == None or type(tree) == str: continue
           words_id = []
-          traverse_tree(writer, tree, 0, words_id)
+          traverse_tree(writer, tree, 0, words_id, True, None)
       elif writer is None:
         for word in words:
-          if word in corpus:
-            corpus[ word ] += 1
+          w = word_normalize(word)
+          if w in corpus:
+            corpus[ w ] += 1
           else:
-            corpus[ word ] = 1
+            corpus[ w ] = 1
       else:
         if len(words) < min_words or len(words) > max_words: continue
         count_sentences += 1
         words_id = []
         for word in words:
-          words_id.append(0 if word not in vocab_table else vocab_table[word])
+          w = word_normalize(word)
+          words_id.append(0 if w not in vocab_table else vocab_table[w])
         unk_words += sum(1 if i == 0 else 0 for i in words_id)
         total_words += len(words_id)
         example = tf.train.Example(
@@ -119,57 +141,11 @@ def Parse(f, writer, dependency_tree, quote_split, comma_split,
     return
   """End of nltk parse"""
 
-  content = re.sub('[,]',' , ',content)
-  for cc in ['Mr','Mrs','Ms']:
-    content = re.sub(cc+'.', cc, content)
-  target = '.!?;\"' if quote_split else '.!?;'
-  if comma_split: target += ','
-  for cc in target:
-    content = re.sub('['+cc+']',' '+cc+'\n', content)
-  for cc in ['Mr','Mrs','Ms']:
-    content = re.sub(cc, cc+'.', content)
-  content = re.sub('[\']',' \'', content)
-  for sentence in content.split('\n'):
-    sent = re.sub('[^A-Za-z0-9\s\',.!?;]', ' ', re.sub('\s+', ' ', sentence))
-    sent = ' '.join(sent.lower().split())
-    if not valid(sent): continue
-    if dependency_tree:
-      if len(sent.split()) < min_words or len(sent.split()) > max_words:
-        continue
-      for sent in en_nlp(sent).sents:
-        tree = to_nltk_tree(sent.root)
-        if tree == None or type(tree) == str: continue
-        words_id = []
-        traverse_tree(writer, tree, 0, words_id)
-    elif writer is None:
-      for word in sent.split():
-        if word in corpus:
-          corpus[ word ] += 1
-        else:
-          corpus[ word ] = 1
-    else:
-      sent = sent.split()
-      if len(sent) < min_words or len(sent) > max_words: continue
-      count_sentences += 1
-      words_id = []
-      for word in sent:
-        words_id.append(0 if word not in vocab_table else vocab_table[word])
-      unk_words += sum(1 if i == 0 else 0 for i in words_id)
-      total_words += len(words_id)
-      example = tf.train.Example(
-        features=tf.train.Features(
-          feature={
-            'content': tf.train.Feature(
-              int64_list=tf.train.Int64List(value=words_id)),
-            'len': tf.train.Feature(
-              int64_list=tf.train.Int64List(value=[len(words_id)]))}))
-      serialized = example.SerializeToString()
-      writer.write(serialized)
-
 def Parse_testing(f, writer, dependency_tree, self_parse):
   number_of_tree = []
-  global counter
+  global counter_tree
   for question in f:
+    question = question[:-1]
     ret = question.split(',')
     if ret[0] == 'id':
       continue
@@ -180,21 +156,24 @@ def Parse_testing(f, writer, dependency_tree, self_parse):
         words = word_tokenize(cand.lower())
         if writer is None:
           for word in words:
-            corpus_testing[ word ] = 1  
+            w = word_normalize(word)
+            corpus_testing[ w ] = 1
         elif dependency_tree:
-          counter = 0
-          for sent in en_nlp(cand.lower()).sents:
-            tree = to_nltk_tree(sent.root)
+          counter_tree = 0
+          mod_cand = ' '.join( word_normalize(w) for w in words )
+          for sub_sent in en_nlp(mod_cand).sents:
+            tree = to_nltk_tree(sub_sent.root)
             if tree == None or type(tree) == str: continue
             words_id = []
-            traverse_tree(writer, tree, 0, words_id)
-          number_of_tree.append(counter)
+            traverse_tree(writer, tree, 0, words_id, False, word_normalize(choice))
+          number_of_tree.append(counter_tree)
         else:
           if args.debug:
             sys.stderr.write(cand + '\n')
           words_id = []
           for word in words:
-            words_id.append(0 if word not in vocab_table else vocab_table[word])
+            w = word_normalize(word)
+            words_id.append(0 if w not in vocab_table else vocab_table[w])
           example = tf.train.Example(
             features=tf.train.Features(
               feature={
@@ -204,42 +183,7 @@ def Parse_testing(f, writer, dependency_tree, self_parse):
                   int64_list=tf.train.Int64List(value=[len(words_id)]))}))
           serialized = example.SerializeToString()
           writer.write(serialized)
-        return
       """End of nltk parse"""
-      for cc in ['Mr','Mrs','Ms']:
-        cand = re.sub(cc+'.', cc, cand)
-      for cc in '.!?;,':
-        cand = re.sub('['+cc+']',' '+cc+' ', cand)
-      for cc in ['Mr','Mrs','Ms']:
-        cand = re.sub(cc, cc+'.', cand)
-      cand = re.sub('[\']',' \'', cand)
-      cand = re.sub('[^A-Za-z0-9\s\',.!?;]', '', cand)
-      if writer is None:
-        for word in cand.lower().split():
-          corpus_testing[ word ] = 1  
-      elif dependency_tree:
-        counter = 0
-        for sent in en_nlp(cand.lower()).sents:
-          tree = to_nltk_tree(sent.root)
-          if tree == None or type(tree) == str: continue
-          words_id = []
-          traverse_tree(writer, tree, 0, words_id)
-        number_of_tree.append(counter)
-      else:
-        if args.debug:
-          sys.stderr.write(cand + '\n')
-        words_id = []
-        for word in cand.lower().split():
-          words_id.append(0 if word not in vocab_table else vocab_table[word])
-        example = tf.train.Example(
-          features=tf.train.Features(
-            feature={
-              'content': tf.train.Feature(
-                int64_list=tf.train.Int64List(value=words_id)),
-              'len': tf.train.Feature(
-                int64_list=tf.train.Int64List(value=[len(words_id)]))}))
-        serialized = example.SerializeToString()
-        writer.write(serialized)
   if dependency_tree:
     np.save('number_of_tree.npy',np.array(number_of_tree))
 
@@ -320,7 +264,11 @@ if __name__ == '__main__':
   corpus = dict()
   corpus_testing = dict()
   global count_sentences
+  global counter
+  global counter_tree
   count_sentences = 0
+  counter = 0
+  counter_tree = 0
 
   sys.stderr.write('start parsing datas...\n')
   with open(args.testing_data,'r',encoding="utf-8",errors='ignore') as f:
@@ -354,7 +302,7 @@ if __name__ == '__main__':
           i.append(float(0))
       np.save(wordvec_name,np.array(res))
       sys.stderr.write('number of useful words : %d\n' % (len(res)))
-      
+
   sys.stderr.write('start transforming training datas'
                    ' into the format of TFRecoder files...\n')
   vocab_table = dict()
@@ -364,7 +312,6 @@ if __name__ == '__main__':
       vocab_table[w[:-1]] = vocab_table_idx
       vocab_table_idx = vocab_table_idx + 1
 
-  global counter
   global unk_words
   global total_words
   unk_words, total_words = 0, 0
@@ -376,8 +323,8 @@ if __name__ == '__main__':
         writer = tf.python_io.TFRecordWriter(args.output_dir+'/'+file_name[21:-5]+'.tfr')
         Parse(f, writer, args.dependency_tree, args.quote_split, args.comma_split,
               args.min_words, args.max_words, args.slice_out, args.self_parse)
-  sys.stderr.write('unk_words: %d, total_words: %d, perc: %f%%\n' %
-                   (unk_words, total_words, unk_words * 100 / total_words))
+  #sys.stderr.write('unk_words: %d, total_words: %d, perc: %f%%\n' %
+  #                 (unk_words, total_words, unk_words * 100 / total_words))
   sys.stderr.write('Number of sentences: %d\n' % count_sentences)
 
   sys.stderr.write('start transforming testing data '
