@@ -213,6 +213,11 @@ if __name__ == '__main__':
         help='OUTPUT_DIR is the directory where the '
              'output files of training datas will be '
              'stored in. (default: %(default)s)',)
+  argparser.add_argument('-og', '--output_glove_dir',
+        type=str, default='data/',
+        help='OUTPUT_GLOVE_DIR is the directory where the '
+             'wordvec and vocab files from glove file be '
+             'stored in. (default: %(default)s)',)
   argparser.add_argument('-of', '--output_file',
         type=str, default='testing_data.tfr',
         help='OUTPUT_FILE is the TFRecorder file from '
@@ -286,7 +291,12 @@ if __name__ == '__main__':
   sys.stderr.write('start embedding words...\n')
   with open(args.glove_file,'r') as glove:
     vocab_name = re.sub('glove','vocab',args.glove_file)
+    ret = re.search(r"/", vocab_name)
+    if ret is None: vocab_name = args.output_glove_dir + vocab_name
+    else: vocab_name = args.output_glove_dir + vocab_name[ret.start():]
     wordvec_name = re.sub('txt','npy',re.sub('glove','wordvec',args.glove_file))
+    if ret is None: wordvec_name = args.output_glove_dir + wordvec_name
+    else: wordvec_name = args.output_glove_dir + wordvec_name[ret.start():]
     with open(vocab_name,'w') as word_list:
       dimension = int(args.glove_file.split('.')[2][:-1])
       word_list.write("<unk>\n")
