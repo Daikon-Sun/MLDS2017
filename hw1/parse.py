@@ -246,6 +246,10 @@ if __name__ == '__main__':
         help='Head and tail part of content will be sliced out.'
              ' (default: It won\'t be sliced out)',
         action='store_true')
+  argparser.add_argument('-sk', '--skip',
+        help='Skip out transforming training data parrs'
+             ' (default: It won\'t be skipped)',
+        action='store_true')
   argparser.add_argument('-q', '--quote_split',
         help='Sentences will be split between quotation marks (\'\"\')'
              ' (default: split only by {\'.\',\'!\',\'?\',\';\'}).',
@@ -313,29 +317,30 @@ if __name__ == '__main__':
       np.save(wordvec_name,np.array(res))
       sys.stderr.write('number of useful words : %d\n' % (len(res)))
 
-  sys.stderr.write('start transforming training datas'
-                   ' into the format of TFRecoder files...\n')
-  vocab_table = dict()
-  vocab_table_idx = 0
-  with open(vocab_name,'r') as vocab:
-    for w in vocab:
-      vocab_table[w[:-1]] = vocab_table_idx
-      vocab_table_idx = vocab_table_idx + 1
+  if not args.skip:
+    sys.stderr.write('start transforming training datas'
+                     ' into the format of TFRecoder files...\n')
+    vocab_table = dict()
+    vocab_table_idx = 0
+    with open(vocab_name,'r') as vocab:
+      for w in vocab:
+        vocab_table[w[:-1]] = vocab_table_idx
+        vocab_table_idx = vocab_table_idx + 1
 
-  global unk_words
-  global total_words
-  unk_words, total_words = 0, 0
-  with open(args.file_list,'r') as file_list:
-    for file_name in tqdm(file_list):
-      with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
-        if args.debug:
-          sys.stderr.write('start converting file ' + file_name[:-1] + '\n')
-        writer = tf.python_io.TFRecordWriter(args.output_dir+'/'+file_name[21:-5]+'.tfr')
-        Parse(f, writer, args.dependency_tree, args.quote_split, args.comma_split,
-              args.min_words, args.max_words, args.slice_out, args.self_parse)
-  #sys.stderr.write('unk_words: %d, total_words: %d, perc: %f%%\n' %
-  #                 (unk_words, total_words, unk_words * 100 / total_words))
-  sys.stderr.write('Number of sentences: %d\n' % count_sentences)
+    global unk_words
+    global total_words
+    unk_words, total_words = 0, 0
+    with open(args.file_list,'r') as file_list:
+      for file_name in tqdm(file_list):
+        with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
+          if args.debug:
+            sys.stderr.write('start converting file ' + file_name[:-1] + '\n')
+          writer = tf.python_io.TFRecordWriter(args.output_dir+'/'+file_name[21:-5]+'.tfr')
+          Parse(f, writer, args.dependency_tree, args.quote_split, args.comma_split,
+                args.min_words, args.max_words, args.slice_out, args.self_parse)
+    #sys.stderr.write('unk_words: %d, total_words: %d, perc: %f%%\n' %
+    #                 (unk_words, total_words, unk_words * 100 / total_words))
+    sys.stderr.write('Number of sentences: %d\n' % count_sentences)
 
   sys.stderr.write('start transforming testing data '
                    'into the format of TFRecoder file...\n')
