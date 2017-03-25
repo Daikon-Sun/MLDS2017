@@ -10,18 +10,18 @@ import copy
 import csv
 
 #default values (in alphabetic order)
-default_batch_size = 256
+default_batch_size = 128
 default_data_dir = './Training_Data/'
-default_hidden_size = 256
+default_hidden_size = 1024
 default_info_epoch = 10
 default_init_scale = 0.001
-default_keep_prob = 0.75
-default_layer_num = 2
-default_learning_rate = 0.001
-default_rnn_type = 3
-default_max_grad_norm = 5
-default_max_epoch = 30000
-default_num_sampled = 3000
+default_keep_prob = 0.5
+default_layer_num = 3
+default_learning_rate = 0.003
+default_rnn_type = 2
+default_max_grad_norm = 10
+default_max_epoch = 50000
+default_num_sampled = 2000
 default_optimizer = 4
 default_softmax_loss = 1
 default_train_num = 522
@@ -150,8 +150,8 @@ def is_valid(mode): return mode == 1
 def is_test(mode): return mode == 2
 
 def get_single_example(para):
-  '''get one example from TFRecorder file using tensorflow default queue runner'''
-  f_queue = tf.train.string_input_producer(filenames[para.mode], num_epochs=None)
+  '''get one example from TFRecorder file using tf default queue runner'''
+  f_queue = tf.train.string_input_producer(filenames[para.mode])
   reader = tf.TFRecordReader()
 
   _, serialized_example = reader.read(f_queue)
