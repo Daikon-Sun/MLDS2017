@@ -13,7 +13,7 @@ import csv
 default_batch_size = 256
 default_data_dir = './Training_Data/'
 default_hidden_size = 256
-default_info_epoch = 5
+default_info_epoch = 10
 default_init_scale = 0.001
 default_keep_prob = 0.75
 default_layer_num = 2
@@ -25,7 +25,7 @@ default_num_sampled = 3000
 default_optimizer = 4
 default_softmax_loss = 1
 default_train_num = 522
-default_wordvec_src = 3
+default_wordvec_src = 4
 optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,
               tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,
               tf.train.AdamOptimizer, tf.train.RMSPropOptimizer]
@@ -304,12 +304,12 @@ def run_epoch(sess, model, args):
   else:
     fetches['prob'] = model.prob
     fetches['f_target'] = model.f_target
-    fetches['b_target'] = model.b_target
+    if args.use_bi: fetches['b_target'] = model.b_target
 
     vals = sess.run(fetches)
     prob = vals['prob']
     f_target = vals['f_target']
-    b_target = vals['b_target']
+    if args.use_bi: b_target = vals['b_target']
 
     #shape of choices = 5 x (len(sentence)-1)
     sent_len = f_target.shape[1]
