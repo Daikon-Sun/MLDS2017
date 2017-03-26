@@ -23,6 +23,7 @@ default_max_grad_norm = 10
 default_max_epoch = 50000
 default_num_sampled = 2000
 default_optimizer = 4
+default_output_filename = './submission.csv'
 default_softmax_loss = 1
 default_train_num = 522
 default_wordvec_src = 3
@@ -124,6 +125,10 @@ parser.add_argument('-dd', '--data_dir',
                     type=str, default=default_data_dir, nargs='?',
                     help='Directory where the data are placed.'
                     '(default:%s)'%default_data_dir)
+parser.add_argument('-of', '--output_filename',
+                    type=str, default=default_output_filename, nargs='?',
+                    help='Filename of the final prediction.'
+                    '(default:%s)'%default_output_filename)
 args = parser.parse_args()
 
 #calculate real epochs
