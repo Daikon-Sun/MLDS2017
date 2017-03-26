@@ -363,7 +363,7 @@ with tf.Graph().as_default():
         valid_perplexity = run_epoch(sess, valid_model, valid_args)
         if i%args.info_epoch == 0:
           print('Epoch: %d Valid Perplexity: %.4f'%(i, valid_perplexity))
-    with open('submission/basic_lstm2.csv', 'w') as f:
+    with open('submission.csv', 'w') as f:
       wrtr = csv.writer(f)
       wrtr.writerow(['id', 'answer'])
       for i in range(1040):
