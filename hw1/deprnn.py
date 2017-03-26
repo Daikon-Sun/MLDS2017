@@ -220,8 +220,8 @@ class DepRNN(object):
       self._f_target = batch[:, 2:]
       self._b_target = batch[:, :-2]
     else:
-      inputs = batch[:, :-2]
-      self._f_target = batch[:, 2:]
+      inputs = batch[:, :-1]
+      self._f_target = batch[:, 1:]
 
     #word_id to vector
     inputs = tf.nn.embedding_lookup(W_E, inputs)
