@@ -175,6 +175,7 @@
 
 \begin{document}
 \maketitle 
+\pagenumbering{gobble}% Remove page numbers (and reset to 1)
 \thispagestyle{empty}
 \section{Environment}
 \begin{enumerate}
@@ -283,15 +284,15 @@ LSTM based RNN Language Model
   \item Dependency Tree\\
     Dependency tree 可表示句子當中各單字之間的關聯。因此，將資料轉爲
     dependency tree 後，可更爲有效的分出每個句子中各個合法的語句，使訓練
-    的資料更爲廣泛且一般。\\ 
-    舉例來說：對於句子\texttt{An inventory of syntactic functions is taken to be primitive.}
-    我們可以將其轉爲如圖 Figure ~\ref{fig:dt} 的 dependency tree。
-    \begin{figure}[!h]
-      \centering
-      \includegraphics[scale=0.5]{dt.png}
-      \caption{Dependency Tree}
-      \label{fig:dt}
-    \end{figure}
+    的資料更爲廣泛且一般。
+    %舉例來說：對於句子\texttt{An inventory of syntactic functions is taken to be primitive.}
+    %我們可以將其轉爲如圖 Figure ~\ref{fig:dt} 的 dependency tree。
+    %\begin{figure}[!h]
+      %\centering
+      %\includegraphics[scale=0.5]{dt.png}
+      %\caption{Dependency Tree}
+      %\label{fig:dt}
+    %\end{figure}
   \item Word Normalization\\
     在原先預處理 Training data 時，我們是利用 nltk 套件中的 sent tokenize
     以及 word tokenize，但由於 Training data 中，有些單字前後連接一些不重要
