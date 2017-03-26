@@ -213,7 +213,7 @@ LSTM based RNN Language Model
   \item 流程：\\
     \begin{tabular}{lcl}
       處理資料 & : & 將 Training data 轉成一個個單句或是以 dependency tree 的形式轉成若干單句，\\
-               &   & 再將句子中每個單詞轉爲對應的 word vector \\
+               &   & 再將句子中每個單詞轉爲對應的 word vector。 \\
       訓練模型 & : & 使用變動長度多種的 rnn cell，輸入是除掉最後一個字的單句，輸出是通過  \\
                &   & softmax 之後與輸入算 loss，使用不同的 gradient descent 方法來訓練模型。\\
       測試資料 & : & 將 Testing data 以與 Training data 相同的方式進行處理，將各個選項填入的單 \\
@@ -307,9 +307,9 @@ LSTM based RNN Language Model
     防止模型 overfitting，雖然 perplexity 降得稍微慢一點，但最終訓練出來的
     模型好壞較為穩定。
   \item 加上sampled softmax\\
-    一開使用 standard softmax（呼叫 tensorflow 中的 sequece\_loss\_by\_example ）
+    一開使用 standard softmax（呼叫 tensorflow 中的 sequence\_loss\_by\_example ）
     訓練的速度較慢，通常需要訓練十幾個小時且結果也普通，換成 sampled softmax
-    （呼叫tensorflow的sampled\_softmax）之後訓練約 7~8 個小時即可達到約 0.48 的結果。
+    （呼叫 tensorflow 的 sampled\_softmax ）之後訓練約 7 $\sim$ 8 個小時即可達到約 0.48 的結果。
 \end{enumerate}
 % End of Improvement
 
