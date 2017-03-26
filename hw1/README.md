@@ -44,7 +44,7 @@ Dependency tree
 - Memory usage is about `2 GB`.
 - Time consumed is about `40 mins`.
 
-### Rnn
+## Rnn
 Parameters are set to default value that performs well.
 For customization, just run
 ```
