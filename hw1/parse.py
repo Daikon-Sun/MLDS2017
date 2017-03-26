@@ -246,6 +246,10 @@ if __name__ == '__main__':
         help='Head and tail part of content will be sliced out.'
              ' (default: It won\'t be sliced out)',
         action='store_true')
+  argparser.add_argument('-sk', '--skip',
+        help='Skip out transforming training data parrs'
+             ' (default: It won\'t be skipped)',
+        action='store_true')
   argparser.add_argument('-q', '--quote_split',
         help='Sentences will be split between quotation marks (\'\"\')'
              ' (default: split only by {\'.\',\'!\',\'?\',\';\'}).',
@@ -275,46 +279,46 @@ if __name__ == '__main__':
   counter = 0
   counter_tree = 0
 
-  sys.stderr.write('start parsing datas...\n')
-  with open(args.testing_data,'r',encoding="utf-8",errors='ignore') as f:
-    Parse_testing(f, None, args.dependency_tree, args.self_parse)
-  with open(args.file_list,'r') as file_list:
-    for file_name in tqdm(file_list):
-      with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
-        if args.debug:
-          sys.stderr.write('start parsing file ' + file_name[:-1] + '\n')
-        Parse(f, None, False, args.quote_split, args.comma_split,
-              args.min_words, args.max_words, args.slice_out, args.self_parse)
-        if args.debug:
-          sys.stderr.write('finished parsing file ' + file_name[:-1] + '\n')
+  if not args.skip:
+    sys.stderr.write('start parsing datas...\n')
+    with open(args.testing_data,'r',encoding="utf-8",errors='ignore') as f:
+      Parse_testing(f, None, args.dependency_tree, args.self_parse)
+    with open(args.file_list,'r') as file_list:
+      for file_name in tqdm(file_list):
+        with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
+          if args.debug:
+            sys.stderr.write('start parsing file ' + file_name[:-1] + '\n')
+          Parse(f, None, False, args.quote_split, args.comma_split,
+                args.min_words, args.max_words, args.slice_out, args.self_parse)
+          if args.debug:
+            sys.stderr.write('finished parsing file ' + file_name[:-1] + '\n')
 
   sys.stderr.write('start embedding words...\n')
-  with open(args.glove_file,'r') as glove:
-    vocab_name = re.sub('glove','vocab',args.glove_file)
-    ret = re.search(r"/", vocab_name)
-    if ret is None: vocab_name = args.output_glove_dir + vocab_name
-    else: vocab_name = args.output_glove_dir + vocab_name[ret.start():]
-    wordvec_name = re.sub('txt','npy',re.sub('glove','wordvec',args.glove_file))
-    if ret is None: wordvec_name = args.output_glove_dir + wordvec_name
-    else: wordvec_name = args.output_glove_dir + wordvec_name[ret.start():]
-    with open(vocab_name,'w') as word_list:
-      dimension = int(args.glove_file.split('.')[2][:-1])
-      word_list.write("<unk>\n")
-      res = [[]]
-      for word in tqdm(glove):
-        ret = word.split()
-        if (ret[0] in corpus and corpus[ret[0]] >= args.count) or \
-            ret[0] in corpus_testing:
-          word_list.write(ret[0]+'\n')
-          res.append(list(map(float,ret[1:])))
-      for i in res:
-        while len(i) < dimension:
-          i.append(float(0))
-      np.save(wordvec_name,np.array(res))
-      sys.stderr.write('number of useful words : %d\n' % (len(res)))
+  vocab_name = re.sub('glove','vocab',args.glove_file)
+  if not args.skip:
+    with open(args.glove_file,'r') as glove:
+      ret = re.search(r"/", vocab_name)
+      if ret is None: vocab_name = args.output_glove_dir + vocab_name
+      else: vocab_name = args.output_glove_dir + vocab_name[ret.start():]
+      wordvec_name = re.sub('txt','npy',re.sub('glove','wordvec',args.glove_file))
+      if ret is None: wordvec_name = args.output_glove_dir + wordvec_name
+      else: wordvec_name = args.output_glove_dir + wordvec_name[ret.start():]
+      with open(vocab_name,'w') as word_list:
+        dimension = int(args.glove_file.split('.')[2][:-1])
+        word_list.write("<unk>\n")
+        res = [[]]
+        for word in tqdm(glove):
+          ret = word.split()
+          if (ret[0] in corpus and corpus[ret[0]] >= args.count) or \
+              ret[0] in corpus_testing:
+            word_list.write(ret[0]+'\n')
+            res.append(list(map(float,ret[1:])))
+        for i in res:
+          while len(i) < dimension:
+            i.append(float(0))
+        np.save(wordvec_name,np.array(res))
+        sys.stderr.write('number of useful words : %d\n' % (len(res)))
 
-  sys.stderr.write('start transforming training datas'
-                   ' into the format of TFRecoder files...\n')
   vocab_table = dict()
   vocab_table_idx = 0
   with open(vocab_name,'r') as vocab:
@@ -322,20 +326,23 @@ if __name__ == '__main__':
       vocab_table[w[:-1]] = vocab_table_idx
       vocab_table_idx = vocab_table_idx + 1
 
-  global unk_words
-  global total_words
-  unk_words, total_words = 0, 0
-  with open(args.file_list,'r') as file_list:
-    for file_name in tqdm(file_list):
-      with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
-        if args.debug:
-          sys.stderr.write('start converting file ' + file_name[:-1] + '\n')
-        writer = tf.python_io.TFRecordWriter(args.output_dir+'/'+file_name[21:-5]+'.tfr')
-        Parse(f, writer, args.dependency_tree, args.quote_split, args.comma_split,
-              args.min_words, args.max_words, args.slice_out, args.self_parse)
-  #sys.stderr.write('unk_words: %d, total_words: %d, perc: %f%%\n' %
-  #                 (unk_words, total_words, unk_words * 100 / total_words))
-  sys.stderr.write('Number of sentences: %d\n' % count_sentences)
+  if not args.skip:
+    sys.stderr.write('start transforming training datas'
+                     ' into the format of TFRecoder files...\n')
+    global unk_words
+    global total_words
+    unk_words, total_words = 0, 0
+    with open(args.file_list,'r') as file_list:
+      for file_name in tqdm(file_list):
+        with open(file_name[:-1],'r',encoding="utf-8",errors='ignore') as f:
+          if args.debug:
+            sys.stderr.write('start converting file ' + file_name[:-1] + '\n')
+          writer = tf.python_io.TFRecordWriter(args.output_dir+'/'+file_name[21:-5]+'.tfr')
+          Parse(f, writer, args.dependency_tree, args.quote_split, args.comma_split,
+                args.min_words, args.max_words, args.slice_out, args.self_parse)
+    #sys.stderr.write('unk_words: %d, total_words: %d, perc: %f%%\n' %
+    #                 (unk_words, total_words, unk_words * 100 / total_words))
+    sys.stderr.write('Number of sentences: %d\n' % count_sentences)
 
   sys.stderr.write('start transforming testing data '
                    'into the format of TFRecoder file...\n')
