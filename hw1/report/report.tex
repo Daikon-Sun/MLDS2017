@@ -224,7 +224,8 @@ LSTM based RNN Language Model
       word vector & : & 使用的 word vector 來源及維度（選項：\texttt{glove.6B.50d}, \texttt{glove.6B.100d}, \\
                 &  & \texttt{glove.6B.200d}, \texttt{glove.6B.300d}, \texttt{glove.42B.300d}, \texttt{glove.840B.300d}）\\
       RNN layer & : & RNN 層數 \\
-      sampled number & : & 在 sampled softmax loss 中的 classes 數目 \\
+      softmax method: & : & softmax 方法（選項：\texttt{standard softmax}, \texttt{sampled softmax}, \texttt{nce loss}） \\
+      sampled number & : & 在 sampled softmax 或 nce loss 中抽樣的 class 數目 \\
       optimizer & : & optimizers 的類型（選項：\texttt{GradientDescent}, \texttt{Adadelta}, \texttt{Adagrad},\\
                 &   & \texttt{Momentum}, \texttt{Adam}, \texttt{RMSProp}）\\
       rnn type & : & RNN Cell 的種類（選項：\texttt{Basic}, \texttt{basic LSTM}, \texttt{full LSTM}, \texttt{GRU}） \\
@@ -301,6 +302,14 @@ LSTM based RNN Language Model
     將 nltk word tokenize 出來的單字，再進一步判斷，如果他包含兩個以上的英文
     字母，就將其他所有非英文字母的字元剔除。經過這一個正規化的步驟後，unknown
     word 的比例降低了 0.5\%，並且我們在 public score 上提升了 \textbf{7\%} ！
+  \item 加上 dropout 層 \\
+    因為 3x512 的模型有點大，因此我們在 rnn 的 output layer 上加上 dropout 層，
+    防止模型 overfitting，雖然 perplexity 降得稍微慢一點，但最終訓練出來的
+    模型好壞較為穩定。
+  \item 加上sampled softmax\\
+    一開使用 standard softmax（呼叫 tensorflow 中的 sequece\_loss\_by\_example ）
+    訓練的速度較慢，通常需要訓練十幾個小時且結果也普通，換成 sampled softmax
+    （呼叫tensorflow的sampled\_softmax）之後訓練約 7~8 個小時即可達到約 0.48 的結果。
 \end{enumerate}
 % End of Improvement
 
