@@ -1,4 +1,4 @@
-git clone git@gitlab.com:Daikon-Sun/MLDS_models.git
+git clone https://Daikon-Sun@gitlab.com/Daikon-Sun/MLDS_models.git
 mv MLDS_models/data .
 mv MLDS_models/logs .
 mv MLDS_models/Training_Data .
