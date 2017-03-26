@@ -236,12 +236,11 @@ LSTM based RNN Language Model
       batch size & : &Training 時每個 batch 中 sentence 的數目\\
       hidden size & : & Hidden layer 的維度\\
     \end{tabular}
-   \item 使用的外部資源：\\
+  \item 使用的外部資源：\\
      \begin{tabular}{lcll}
        Word vector & : & GloVe & (\href{https://nlp.stanford.edu/projects/glove/}{\url{https://nlp.stanford.edu/projects/glove/}}) \\
        Dependency Tree Parser & : & spacy & (\href{https://spacy.io/docs/usage/dependency-parse}{\url{https://spacy.io/docs/usage/dependency-parse}})
      \end{tabular}
-
 \end{enumerate}
 % End of Model description
 
@@ -284,7 +283,15 @@ LSTM based RNN Language Model
   \item Dependency Tree\\
     Dependency tree 可表示句子當中各單字之間的關聯。因此，將資料轉爲
     dependency tree 後，可更爲有效的分出每個句子中各個合法的語句，使訓練
-    的資料更爲廣泛且一般。
+    的資料更爲廣泛且一般。\\ 
+    舉例來說：對於句子\texttt{An inventory of syntactic functions is taken to be primitive.}
+    我們可以將其轉爲如圖 Figure ~\ref{fig:dt} 的 dependency tree。
+    \begin{figure}[!h]
+      \centering
+      \includegraphics[scale=0.5]{dt.png}
+      \caption{Dependency Tree}
+      \label{fig:dt}
+    \end{figure}
   \item Word Normalization\\
     在原先預處理 Training data 時，我們是利用 nltk 套件中的 sent tokenize
     以及 word tokenize，但由於 Training data 中，有些單字前後連接一些不重要
