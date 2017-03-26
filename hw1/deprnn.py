@@ -10,9 +10,9 @@ import copy
 import csv
 
 #default values (in alphabetic order)
-default_batch_size = 128
+default_batch_size = 256
 default_data_dir = './Training_Data/'
-default_hidden_size = 1024
+default_hidden_size = 256
 default_info_epoch = 10
 default_init_scale = 0.001
 default_keep_prob = 0.5
@@ -25,7 +25,7 @@ default_num_sampled = 2000
 default_optimizer = 4
 default_softmax_loss = 1
 default_train_num = 522
-default_wordvec_src = 4
+default_wordvec_src = 3
 optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,
               tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,
               tf.train.AdamOptimizer, tf.train.RMSPropOptimizer]
