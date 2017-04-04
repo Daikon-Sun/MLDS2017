@@ -169,12 +169,13 @@
 
 %%%%%%%%%%%%%%%Title%%%%%%%%%%%%%%%
 \title{MLDS 2017 Spring HW1 - Language Model}
-\author{B03901056 孫凡耕 B03901070 羅啓心\\
+\author{B03901056 孫凡耕 B03901070 羅啟心\\
         B03901032 郭子生 B03901003 許晉嘉}
 \date{\vspace{-5ex}}
 
 \begin{document}
 \maketitle 
+\pagenumbering{gobble}% Remove page numbers (and reset to 1)
 \thispagestyle{empty}
 \section{Environment}
 \begin{enumerate}
@@ -212,7 +213,7 @@ LSTM based RNN Language Model
   \item 流程：\\
     \begin{tabular}{lcl}
       處理資料 & : & 將 Training data 轉成一個個單句或是以 dependency tree 的形式轉成若干單句，\\
-               &   & 再將句子中每個單詞轉爲對應的 word vector \\
+               &   & 再將句子中每個單詞轉爲對應的 word vector。 \\
       訓練模型 & : & 使用變動長度多種的 rnn cell，輸入是除掉最後一個字的單句，輸出是通過  \\
                &   & softmax 之後與輸入算 loss，使用不同的 gradient descent 方法來訓練模型。\\
       測試資料 & : & 將 Testing data 以與 Training data 相同的方式進行處理，將各個選項填入的單 \\
@@ -223,7 +224,8 @@ LSTM based RNN Language Model
       word vector & : & 使用的 word vector 來源及維度（選項：\texttt{glove.6B.50d}, \texttt{glove.6B.100d}, \\
                 &  & \texttt{glove.6B.200d}, \texttt{glove.6B.300d}, \texttt{glove.42B.300d}, \texttt{glove.840B.300d}）\\
       RNN layer & : & RNN 層數 \\
-      sampled number & : & 在 sampled softmax loss 中的 classes 數目 \\
+      softmax method: & : & softmax 方法（選項：\texttt{standard softmax}, \texttt{sampled softmax}, \texttt{nce loss}） \\
+      sampled number & : & 在 sampled softmax 或 nce loss 中抽樣的 class 數目 \\
       optimizer & : & optimizers 的類型（選項：\texttt{GradientDescent}, \texttt{Adadelta}, \texttt{Adagrad},\\
                 &   & \texttt{Momentum}, \texttt{Adam}, \texttt{RMSProp}）\\
       rnn type & : & RNN Cell 的種類（選項：\texttt{Basic}, \texttt{basic LSTM}, \texttt{full LSTM}, \texttt{GRU}） \\
@@ -283,15 +285,15 @@ LSTM based RNN Language Model
   \item Dependency Tree\\
     Dependency tree 可表示句子當中各單字之間的關聯。因此，將資料轉爲
     dependency tree 後，可更爲有效的分出每個句子中各個合法的語句，使訓練
-    的資料更爲廣泛且一般。\\ 
-    舉例來說：對於句子\texttt{An inventory of syntactic functions is taken to be primitive.}
-    我們可以將其轉爲如圖 Figure ~\ref{fig:dt} 的 dependency tree。
-    \begin{figure}[!h]
-      \centering
-      \includegraphics[scale=0.5]{dt.png}
-      \caption{Dependency Tree}
-      \label{fig:dt}
-    \end{figure}
+    的資料更爲廣泛且一般。
+    %舉例來說：對於句子\texttt{An inventory of syntactic functions is taken to be primitive.}
+    %我們可以將其轉爲如圖 Figure ~\ref{fig:dt} 的 dependency tree。
+    %\begin{figure}[!h]
+      %\centering
+      %\includegraphics[scale=0.5]{dt.png}
+      %\caption{Dependency Tree}
+      %\label{fig:dt}
+    %\end{figure}
   \item Word Normalization\\
     在原先預處理 Training data 時，我們是利用 nltk 套件中的 sent tokenize
     以及 word tokenize，但由於 Training data 中，有些單字前後連接一些不重要
@@ -300,6 +302,14 @@ LSTM based RNN Language Model
     將 nltk word tokenize 出來的單字，再進一步判斷，如果他包含兩個以上的英文
     字母，就將其他所有非英文字母的字元剔除。經過這一個正規化的步驟後，unknown
     word 的比例降低了 0.5\%，並且我們在 public score 上提升了 \textbf{7\%} ！
+  \item 加上 dropout 層 \\
+    因為 3x512 的模型有點大，因此我們在 rnn 的 output layer 上加上 dropout 層，
+    防止模型 overfitting，雖然 perplexity 降得稍微慢一點，但最終訓練出來的
+    模型好壞較為穩定。
+  \item 加上sampled softmax\\
+    一開使用 standard softmax（呼叫 tensorflow 中的 sequence\_loss\_by\_example ）
+    訓練的速度較慢，通常需要訓練十幾個小時且結果也普通，換成 sampled softmax
+    （呼叫 tensorflow 的 sampled\_softmax ）之後訓練約 7 $\sim$ 8 個小時即可達到約 0.48 的結果。
 \end{enumerate}
 % End of Improvement
 
@@ -370,7 +380,7 @@ LSTM based RNN Language Model
   \hline
   孫凡耕 & 寫 RNN 模型、分配組內工作、教導組員\\
   \hline
-  羅啓心 & 嘗試寫 Improvement、撰寫報告的模型描述\\
+  羅啟心 & 嘗試寫 Improvement、撰寫報告的模型描述\\
   \hline
   郭子生 & N-gram、跑實驗\\
   \hline
