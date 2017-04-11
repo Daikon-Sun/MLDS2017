@@ -15,7 +15,7 @@ default_hidden_units          = 1000 # according to paper
 default_batch_size            = 
 default_layer_num             = 2 # according to paper
 default_max_gradient_norm     = 10
-default_learning_rate         = 0.001
+default_learning_rate         = 0.0001
 default_learning_rate_decay_factor = 1
 
 # not implemented yet:
@@ -67,6 +67,10 @@ class S2VT(object):
 
     output_projection = default_output_projection
     softmax_loss_function = default_softmax_loss_function
+
+    # 我们将feed_previous设置为False。这意味着解码器将使用提供的decode_inputs张量。
+    # 如果我们将feed_previous设置为True，解码器将只使用decoder_inputs的第一个元素，
+    # 来自该列表的所有其他张量将被忽略，并且将使用解码器的先前输出。
 
     def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
       return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(
