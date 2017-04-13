@@ -11,12 +11,12 @@ import sys
 
 default_rnn_cell_type         = 1
 default_image_dimension       = 4096 # dimension of each frame
-default_image_frame_num       = 80 # each video has fixed 80 frames
-# default_vocab_size          
+default_image_frame_num       = 80 # each video has fixed 80 frames          
 default_hidden_units          = 1000 # according to paper
 default_batch_size            = 
 default_layer_num             = 2 # according to paper
 default_max_gradient_norm     = 10
+default_dropout_keep_prob     = 0.5 # for dropout layer
 default_learning_rate         = 0.0001
 default_learning_rate_decay_factor = 1
 
@@ -29,21 +29,29 @@ default_learning_rate_decay_factor = 1
 default_output_projection     = None
 default_softmax_loss_function = None
 
+
+# not implmented yet
+def get_one_caption():
+  # randomly pick a caption from a video
+  return one_caption, length_of_caption
+
+
 class S2VT(object):
 
   def __init__(self,
-  	           rnn_cell_type
+               running_mode, # training or testing
+  	           rnn_cell_type,
   	           image_dimension,
                image_frame_num,
   	           vocab_size,
+               embedding_dimension,
   	           hidden_units,
   	           batch_size,
   	           layer_num,
   	           max_gradient_norm,
+               dropout_keep_prob,
   	           learning_rate,
   	           learning_rate_decay_factor,
-               vocab_size,
-               embedding_dimension,
   	           output_projection,
   	           softmax_loss_function,
   	           dtype=tf.float32):
@@ -52,6 +60,7 @@ class S2VT(object):
     self.image_frame_num = image_frame_num
     self.hidden_units = hidden_units
     self.batch_size = batch_size
+    self.dropout_keep_prob = dropout_keep_prob
     self.learning_rate = learning_rate
     self.vocab_size = vocab_size
     self.embedding_dimension = embedding_dimension
@@ -65,7 +74,6 @@ class S2VT(object):
 
 
     # define single cell based on default parameters
-
     def single_cell():
       if rnn_cell_type == 0:
         return tf.contrib.rnn.BasicRNNCell(hidden_units, activation=tf.tanh)
@@ -76,66 +84,81 @@ class S2VT(object):
       elif rnn_cell_type == 3:
         return tf.contrib.rnn.GRUCell(hidden_units)
     
-
-    # using pretrained word embedding
-
-    w_emb = tf.Variable(tf.constant(0.0,
-              shape=[vocab_size, embedding_dimension]),
-              trainable=False,
-              name='w_emb')
-    self.word_embedding = tf.placeholder(tf.float32, [vocab_size, embedding_dimension])
-    self.word_embedding_init = w_emb.assign(self.word_embedding)
-
+    # embed words to a lower 500 dimension space according to original paper
+    self.embed_word_matrix = tf.get_variable("embed_word_matrix",
+                               [vocab_size, hidden_units/2]
+                               initializer=tf.random_uniform_initializer(-0.1,0.1))
 
     # two-layer-rnn model according to paper
-
     self.cell_1 = single_cell()
     self.cell_2 = single_cell()
 
-
     # encoding variable for each frame
-
     #self.image_encoding_w = tf.Variable(tf.random_uniform([image_dimension, hidden_units], -0.1, 0.1), name='image_encoding_w')
     #self.image_encoding_b = tf.Variable(tf.zeros([hidden_units]), name='image_encoding_b')
     self.image_encoding_w = tf.get_variable("image_encoding_w",
                               [image_dimension, hidden_units],
-                              initializer=tf.random_normal_initializer(-0.1,0.1))
+                              initializer=tf.random_uniform_initializer(-0.1,0.1))
     self.image_encoding_b = tf.get_variable("image_encoding_b",
                               hidden_units,
                               initializer=tf.constant_initializer(0))
 
-
     # decoding variable for each word
-
     #self.word_decoding_w = tf.Variable(tf.random_uniform([hidden_units, vocab_size], -0.1,0.1), name='word_decoding_w')
     #self.word_decoding_b = tf.Variable(tf.zeros([vocab_size]), name='word_decoding_b')
     self.word_decoding_w = tf.get_variable("word_decoding_w",
                               [hidden_units, vocab_size],
-                              initializer=tf.random_normal_initializer(-0.1,0.1))
+                              initializer=tf.random_uniform_initializer(-0.1,0.1))
     self.word_decoding_b = tf.get_variable("word_decoding_b",
                               vocab_size,
                               initializer=tf.constant_initializer(0))
   # end of __init__
 
-    def model(self):
-      
+  def model(self):
 
-    # #load in pre-trained word-embedding
-    sess.run(train_model._embed_init,
-             feed_dict={train_model._embedding: wordvec})
-    sess.run(test_model._embed_init,
-             feed_dict={test_model._embedding: wordvec})
+    video = tf.placeholder(tf.float32, [self.batch_size, self.image_frame_num, self.image_dimension])
+    video_flat = tf.reshape(video, [-1, self.image_dimension])
+    video_input = tf.nn.xw_plus_b(video_flat, self.image_encoding_w, self.image_encoding_b)
+    video_input = tf.reshape(video_input, [self.batch_size, self.image_frame_num, self.hidden_units])
 
-
-
-
-
-
-
-
+    one_caption, caption_length = get_one_caption()
+    batch, caption_length = tf.train.batch([one_caption, caption_length],
+      batch_size=batch_size, dynamic_pad=True)
+    # sparse tensor cannot be sliced
+    batch = tf.sparse_tensor_to_dense(batch)
+    # caption_len is for dynamic_rnn
+    caption_length = tf.to_int32(caption_length)
 
 
-    #
+    state_layer_1 = tf.zeros([self.batch_size, self.cell_1.state_size])
+    state_layer_2 = tf.zeros([self.batch_size, self.cell_2.state_size])
+    pad = tf.zeros([self.batch_size, self.hidden_units])
+
+    probability = []
+    loss = 0
+
+    #================== encoding ==================#
+
+    for i in range(0,self.image_frame_num):
+      with tf.variable_scope("layer_1"):
+        tf.get_variable_scope().reuse_variables()
+        output_1, state_layer_1 = self.cell_1(video_input[:,i,:],state_layer_1)
+      with tf.variable_scope("layer_2"):
+        tf.get_variable_scope().reuse_variables()
+        output_2, state_layer_2 = self.cell_2(tf.concat(1, [pad, state_layer_1]), state_layer_2)
+
+   #================== decoding ==================#  
+
+    for i in range(0, caption_length):
+      caption_embed = tf.nn.embedding_lookup(self.embed_word_matrix, one_caption[:,i])
+      with tf.variable_scope("layer_1"):
+        tf.get_variable_scope().reuse_variables()
+        output_1, state_layer_1 = self.cell_1(pad, state_layer_1)
+      with tf.variable_scope("layer_2"):
+        tf.get_variable_scope().reuse_variables()
+        output_2, state_layer_2 = self.cell_2(tf.concat(1,caption_embed, state_layer_1), state_layer_2)
+
+
 
     # This is for seq2seq
     # if layer_num > 1:
