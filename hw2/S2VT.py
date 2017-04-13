@@ -41,22 +41,22 @@ class S2VT(object):
 
   def __init__(self,
                running_mode, # training or testing
-  	           rnn_cell_type,
+               rnn_cell_type,
                optimizer_type,
-  	           image_dimension,
+               image_dimension,
                image_frame_num,
-  	           vocab_size,
+               vocab_size,
                embedding_dimension,
-  	           hidden_units,
-  	           batch_size,
-  	           layer_num,
-  	           max_gradient_norm,
+               hidden_units,
+               batch_size,
+               layer_num,
+               max_gradient_norm,
                dropout_keep_prob,
-  	           learning_rate,
-  	           learning_rate_decay_factor,
-  	           output_projection,
-  	           softmax_loss_function,
-  	           dtype=tf.float32):
+               learning_rate,
+               learning_rate_decay_factor,
+               output_projection,
+               softmax_loss_function,
+               dtype=tf.float32):
 
     self.optimizer_type = optimizer_type
     self.image_dimension = image_dimension
