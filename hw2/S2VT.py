@@ -125,15 +125,6 @@ class S2VT(object):
     video_input = tf.nn.xw_plus_b(video_flat, self.image_encoding_w, self.image_encoding_b)
     video_input = tf.reshape(video_input, [self.batch_size, self.image_frame_num, self.hidden_units])
 
-    one_caption, caption_length = get_one_caption()
-    batch, caption_length = tf.train.batch([one_caption, caption_length],
-      batch_size=batch_size, dynamic_pad=True)
-    # sparse tensor cannot be sliced
-    batch = tf.sparse_tensor_to_dense(batch)
-    # caption_len is for dynamic_rnn
-    caption_length = tf.to_int32(caption_length)
-
-
     state_layer_1 = tf.zeros([self.batch_size, self.cell_1.state_size])
     state_layer_2 = tf.zeros([self.batch_size, self.cell_2.state_size])
     pad = tf.zeros([self.batch_size, self.hidden_units])
@@ -149,38 +140,48 @@ class S2VT(object):
         output_1, state_layer_1 = self.cell_1(video_input[:,i,:],state_layer_1)
       with tf.variable_scope("layer_2"):
         tf.get_variable_scope().reuse_variables()
-        output_2, state_layer_2 = self.cell_2(tf.concat(1, [pad, state_layer_1]), state_layer_2)
+        output_2, state_layer_2 = self.cell_2(tf.concat(1, [pad, output_1]), state_layer_2)
 
     #================== decoding ==================#  
 
-    for i in range(0, caption_length):
-      caption_embed = tf.nn.embedding_lookup(self.embed_word_matrix, one_caption[:,i])
-      with tf.variable_scope("layer_1"):
-        tf.get_variable_scope().reuse_variables()
-        output_1, state_layer_1 = self.cell_1(pad, state_layer_1)
+    if running_mode == 0: # training
+      one_caption, caption_length = get_one_caption()
+      batch, caption_length = tf.train.batch([one_caption, caption_length],
+          batch_size=batch_size, dynamic_pad=True)
+      # sparse tensor cannot be sliced
+      batch = tf.sparse_tensor_to_dense(batch)
+      # caption_len is for dynamic_rnn
+      caption_length = tf.to_int32(caption_length)
 
-      # scheduled softmax sampling is not implemented yet
-      with tf.variable_scope("layer_2"):
-        tf.get_variable_scope().reuse_variables()
-        output_2, state_layer_2 = self.cell_2(tf.concat(1,caption_embed, state_layer_1), state_layer_2)
+      for i in range(0, caption_length):
+        caption_embed = tf.nn.embedding_lookup(self.embed_word_matrix, one_caption[:,i])
+        with tf.variable_scope("layer_1"):
+          tf.get_variable_scope().reuse_variables()
+          output_1, state_layer_1 = self.cell_1(pad, state_layer_1)
 
-      labels = tf.expand_dims(one_caption[:, i+1], 1)
-      indices = tf.expand_dims(tf.range(0, self.batch_size, 1), 1)
-      indices_labels = tf.concat(1, [indices, labels])
-      correct_ans = tf.sparse_tensor_to_dense(indices_labels, tf.pack([self.batch_size, self.vocab_size]), 1.0, 0.0)
+        # scheduled softmax sampling is not implemented yet
+        with tf.variable_scope("layer_2"):
+          tf.get_variable_scope().reuse_variables()
+          output_2, state_layer_2 = self.cell_2(tf.concat(1,caption_embed, output_1), state_layer_2)
 
-      predict_ans = tf.nn.xw_plus_b(output_2, self.word_decoding_w, self.word_decoding_b)
-      cross_entropy = tf.nn.softmax_cross_entropy_with_logits(predict_ans, correct_ans)
-      probability.append(predict_ans)
+        labels = tf.expand_dims(one_caption[:, i+1], 1)
+        indices = tf.expand_dims(tf.range(0, self.batch_size, 1), 1)
+        indices_labels = tf.concat(1, [indices, labels])
+        correct_ans = tf.sparse_tensor_to_dense(indices_labels, tf.pack([self.batch_size, self.vocab_size]), 1.0, 0.0)
 
-      loss = loss + tf.reduce_sum(cross_entropy)/self.batch_size
+        predict_ans = tf.nn.xw_plus_b(output_2, self.word_decoding_w, self.word_decoding_b)
+        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(predict_ans, correct_ans)
+        probability.append(predict_ans)
+
+        loss = loss + tf.reduce_sum(cross_entropy)/self.batch_size
+    else: # testing mode (not implement yet)
 
 
-    #if validation or testing, exit here
+    # if validation or testing, exit here
     if running_mode != 0:
       return loss, video, caption, probability
 
-    #clip global gradient norm
+    # clip global gradient norm
     tvars = tf.trainable_variables()
     grads, _ = tf.clip_by_global_norm(tf.gradients(loss, tvars), self.max_gradient_norm)
     optimizer = optimizers[self.optimizer_type](self.learning_rate)
@@ -188,8 +189,9 @@ class S2VT(object):
                     global_step=tf.contrib.framework.get_or_create_global_step())
 
     return loss, video, caption, probability, evaluate
+  # end of model
 
-  
+
 
     # This is for seq2seq
     # if layer_num > 1:
