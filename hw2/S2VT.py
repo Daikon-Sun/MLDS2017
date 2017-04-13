@@ -33,6 +33,7 @@ default_softmax_loss_function = None
 # not implmented yet
 def get_one_caption():
   # randomly pick a caption from a video
+  # should ad <BOS> to the beginning
   return one_caption, length_of_caption
 
 
@@ -154,12 +155,25 @@ class S2VT(object):
       with tf.variable_scope("layer_1"):
         tf.get_variable_scope().reuse_variables()
         output_1, state_layer_1 = self.cell_1(pad, state_layer_1)
+
+      # scheduled softmax sampling is not implemented yet
       with tf.variable_scope("layer_2"):
         tf.get_variable_scope().reuse_variables()
         output_2, state_layer_2 = self.cell_2(tf.concat(1,caption_embed, state_layer_1), state_layer_2)
 
+      labels = tf.expand_dims(one_caption[:, i+1], 1)
+      indices = tf.expand_dims(tf.range(0, self.batch_size, 1), 1)
+      indices_labels = tf.concat(1, [indices, labels])
+      correct_ans = tf.sparse_tensor_to_dense(indices_labels, tf.pack([self.batch_size, self.vocab_size]), 1.0, 0.0)
 
+      predict_ans = tf.nn.xw_plus_b(output_2, self.word_decoding_w, self.word_decoding_b)
+      cross_entropy = tf.nn.softmax_cross_entropy_with_logits(predict_ans, correct_ans)
+      probability.append(predict_ans)
 
+      loss = loss + tf.reduce_sum(cross_entropy)/self.batch_size
+
+    return loss, video, caption, probability
+    
     # This is for seq2seq
     # if layer_num > 1:
     #   cell = tf.contrib.rnn.MultiRNNCell([single_cell() for _ in range(layer_num)])
