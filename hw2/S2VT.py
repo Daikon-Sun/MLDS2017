@@ -120,15 +120,22 @@ class S2VT(object):
 
   def model(self):
 
-    video = tf.placeholder(tf.float32, [self.batch_size, self.image_frame_num, self.image_dimension])
+    if running_mode == 0:
+      video = tf.placeholder(tf.float32, [self.batch_size, self.image_frame_num, self.image_dimension])
+    else if running_mode == 1:
+      video = tf.placeholder(tf.float32, [1, self.image_frame_num, self.image_dimension])
     video_flat = tf.reshape(video, [-1, self.image_dimension])
     video_input = tf.nn.xw_plus_b(video_flat, self.image_encoding_w, self.image_encoding_b)
-    video_input = tf.reshape(video_input, [self.batch_size, self.image_frame_num, self.hidden_units])
+    if running_mode == 0:
+      video_input = tf.reshape(video_input, [self.batch_size, self.image_frame_num, self.hidden_units])
+    else if running_mode == 1:
+      video_input = tf.reshape(video_input, [1, self.image_frame_num, self.hidden_units])
 
     state_layer_1 = tf.zeros([self.batch_size, self.cell_1.state_size])
     state_layer_2 = tf.zeros([self.batch_size, self.cell_2.state_size])
     pad = tf.zeros([self.batch_size, self.hidden_units])
 
+    generated_caption = [] # for testing only
     probability = []
     loss = 0
 
@@ -136,10 +143,10 @@ class S2VT(object):
 
     for i in range(0,self.image_frame_num):
       with tf.variable_scope("layer_1"):
-        tf.get_variable_scope().reuse_variables()
+        if i > 0: tf.get_variable_scope().reuse_variables()
         output_1, state_layer_1 = self.cell_1(video_input[:,i,:],state_layer_1)
       with tf.variable_scope("layer_2"):
-        tf.get_variable_scope().reuse_variables()
+        if i > 0: tf.get_variable_scope().reuse_variables()
         output_2, state_layer_2 = self.cell_2(tf.concat(1, [pad, output_1]), state_layer_2)
 
     #================== decoding ==================#  
@@ -174,12 +181,30 @@ class S2VT(object):
         probability.append(predict_ans)
 
         loss = loss + tf.reduce_sum(cross_entropy)/self.batch_size
+    
     else: # testing mode (not implement yet)
+      for i in range(0,self.max_caption_length):
+        if i == 0: # <BOS> not sure if this is ok
+          caption_embed = tf.nn.embedding_lookup(self.embed_word_matrix, tf.ones([1]))
+        with tf.variable_scope("layer_1"):
+          tf.get_variable_scope().reuse_variables()
+          output_1, state_layer_1 = self.cell_1(pad, state_layer_1)
+        with tf.variable_scope("layer_2"):
+          tf.get_variable_scope().reuse_variables()
+          output_2, state_layer_2 = self.cell_2(tf.concat(1, [caption_embed, output_1]), state_layer_2)
 
+        predict_ans = tf.nn.xw_plus_b(output_2, self.word_decoding_w, self.word_decoding_b)
+        ans_index = tf.argmax(predict_ans, 1)[0]
+        generated_caption.append(ans_index)
+        probability.append(predict_ans)
+
+        # for next word
+        caption_embed = tf.nn.embedding_lookup(self.embed_word_matrix, ans_index)
+        # caption_embed = tf.expand_dims(caption_embed, 0)
 
     # if validation or testing, exit here
     if running_mode != 0:
-      return loss, video, caption, probability
+      return loss, video, caption, probability, generated_caption
 
     # clip global gradient norm
     tvars = tf.trainable_variables()
