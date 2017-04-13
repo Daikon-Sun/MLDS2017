@@ -13,7 +13,7 @@ default_rnn_cell_type         = 1
 default_image_dimension       = 4096 # dimension of each frame
 default_image_frame_num       = 80 # each video has fixed 80 frames          
 default_hidden_units          = 1000 # according to paper
-default_batch_size            = 
+default_batch_size            = 50 
 default_layer_num             = 2 # according to paper
 default_max_gradient_norm     = 10
 default_dropout_keep_prob     = 0.5 # for dropout layer
@@ -42,6 +42,7 @@ class S2VT(object):
   def __init__(self,
                running_mode, # training or testing
   	           rnn_cell_type,
+               optimizer_type,
   	           image_dimension,
                image_frame_num,
   	           vocab_size,
@@ -57,10 +58,12 @@ class S2VT(object):
   	           softmax_loss_function,
   	           dtype=tf.float32):
 
+    self.optimizer_type = optimizer_type
     self.image_dimension = image_dimension
     self.image_frame_num = image_frame_num
     self.hidden_units = hidden_units
     self.batch_size = batch_size
+    self.max_gradient_norm = max_gradient_norm
     self.dropout_keep_prob = dropout_keep_prob
     self.learning_rate = learning_rate
     self.vocab_size = vocab_size
@@ -148,7 +151,7 @@ class S2VT(object):
         tf.get_variable_scope().reuse_variables()
         output_2, state_layer_2 = self.cell_2(tf.concat(1, [pad, state_layer_1]), state_layer_2)
 
-   #================== decoding ==================#  
+    #================== decoding ==================#  
 
     for i in range(0, caption_length):
       caption_embed = tf.nn.embedding_lookup(self.embed_word_matrix, one_caption[:,i])
@@ -172,8 +175,22 @@ class S2VT(object):
 
       loss = loss + tf.reduce_sum(cross_entropy)/self.batch_size
 
-    return loss, video, caption, probability
-    
+
+    #if validation or testing, exit here
+    if running_mode != 0:
+      return loss, video, caption, probability
+
+    #clip global gradient norm
+    tvars = tf.trainable_variables()
+    grads, _ = tf.clip_by_global_norm(tf.gradients(loss, tvars), self.max_gradient_norm)
+    optimizer = optimizers[self.optimizer_type](self.learning_rate)
+    evaluate = optimizer.apply_gradients(zip(grads, tvars),
+                    global_step=tf.contrib.framework.get_or_create_global_step())
+
+    return loss, video, caption, probability, evaluate
+
+  
+
     # This is for seq2seq
     # if layer_num > 1:
     #   cell = tf.contrib.rnn.MultiRNNCell([single_cell() for _ in range(layer_num)])
