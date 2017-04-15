@@ -8,7 +8,7 @@ import tensorflow.contrib.seq2seq as seq2seq
 from nltk.tokenize import word_tokenize
 
 #default values (in alphabetic order)
-default_batch_size = 2#512
+default_batch_size = 512
 default_data_dir = './parsed_data/'
 default_embed_dim = 500
 default_hidden_size = 200
@@ -23,7 +23,7 @@ default_max_epoch = 500
 default_num_sampled = 2000
 default_optimizer = 4
 default_output_filename = './submission.csv'
-default_softmax_loss = 0
+#default_softmax_loss = 0
 default_video_dim = 4096
 default_video_len = 80
 #default_train_num = 522
@@ -81,11 +81,11 @@ parser.add_argument('-opt', '--optimizer',
                     '[0: GradientDescent], [1:Adadelta], [2:Adagrad],'
                     '[3:Momentum], [4:Adam], [5:RMSProp]. (default:%d)'
                     %default_optimizer)
-parser.add_argument('-sl', '--softmax_loss',
-                    type=int, default=default_softmax_loss,
-                    nargs='?', choices=range(0, 3), help='Type of softmax'
-                    'function --> [0:full softmax], [1:sampled softmax],'
-                    '[nce loss]. (default:%d)'%default_softmax_loss)
+#parser.add_argument('-sl', '--softmax_loss',
+#                    type=int, default=default_softmax_loss,
+#                    nargs='?', choices=range(0, 3), help='Type of softmax'
+#                    'function --> [0:full softmax], [1:sampled softmax],'
+#                    '[nce loss]. (default:%d)'%default_softmax_loss)
 parser.add_argument('-rt', '--rnn_type',
                     type=int, default=default_rnn_type,
                     nargs='?', choices=range(0, 4), help='Type of rnn cell -->'
@@ -249,15 +249,21 @@ class DepRNN(object):
                                     inputs=targets_embed,
                                     sequence_length=c_lens)
       decoder_outputs = tf.reshape(decoder_outputs, [-1, para.hidden_size])
+      c_len_max = tf.reduce_max(c_lens)
 
     with tf.variable_scope('softmax') as scope:
-      softmax_w = tf.get_variable('w', [para.vocab_size, para.hidden_size],
+      softmax_w = tf.get_variable('w', [para.hidden_size, para.vocab_size],
           dtype=tf.float32)
       softmax_b = tf.get_variable('b', [para.vocab_size], dtype=tf.float32)
 
-    loss = softmax[para.softmax_loss](softmax_w, softmax_b,
-           tf.reshape(targets, [-1, 1]), decoder_outputs,
-           num_sampled=para.num_sampled, num_classes=para.vocab_size)
+    logits = tf.nn.xw_plus_b(decoder_outputs, softmax_w, softmax_b)
+    logits = tf.reshape(logits, [para.batch_size, c_len_max, para.vocab_size])
+    #loss = softmax[para.softmax_loss](softmax_w, softmax_b,
+    #       tf.reshape(targets, [-1, 1]), decoder_outputs,
+    #       num_sampled=para.num_sampled, num_classes=para.vocab_size)
+    loss =\
+      tf.contrib.seq2seq.sequence_loss(logits, targets,
+                                       tf.ones([para.batch_size, c_len_max]))
 
     self._cost = cost = tf.reduce_mean(loss)
 
@@ -313,11 +319,12 @@ def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
   fetches = {}
   if not model.is_test():
-    fetches['cost'] = model.cost
-    if model.is_train():
-      fetches['eval'] = model.eval
-
+    #fetches['cost'] = model.cost
+    #if model.is_train():
+    #  fetches['eval'] = model.eval
+    fetches['v_len'] = model.v_lens
     vals = sess.run(fetches)
+    return 0
     return np.exp(vals['cost'])
 
   else:
@@ -378,12 +385,12 @@ if __name__ == '__main__':
   #        serialized = example.SerializeToString()
   #        writer.write(serialized)
   #sys.exit(0)
-  def full_softmax(weights, biases, labels, inputs, num_sampled, num_classes):
-    return tf.contrib.legacy_seq2seq.sequence_loss_by_example(
-           [tf.matmul(inputs, tf.transpose(weights))+biases],
-           [tf.reshape(labels, [-1])],
-           [tf.ones([labels.get_shape()[1]*args.batch_size], tf.float32)])
-  softmax = [full_softmax, tf.nn.sampled_softmax_loss, tf.nn.nce_loss]
+  #def full_softmax(weights, biases, labels, inputs, num_sampled, num_classes):
+  #  return tf.contrib.legacy_seq2seq.sequence_loss_by_example(
+  #         [tf.matmul(inputs, tf.transpose(weights))+biases],
+  #         [tf.reshape(labels, [-1])],
+  #         [tf.ones([labels.get_shape()[1]*args.batch_size], tf.float32)])
+  #softmax = [full_softmax, tf.nn.sampled_softmax_loss, tf.nn.nce_loss]
 
   with tf.Graph().as_default():
     initializer = tf.random_uniform_initializer(-args.init_scale,
