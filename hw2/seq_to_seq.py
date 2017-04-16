@@ -1,27 +1,28 @@
 #!/usr/bin/python3
 import os, copy, csv, sys, json, argparse
-from tqdm import tqdm
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
+from tensorflow.contrib.rnn import LSTMStateTuple
 import tensorflow.contrib.seq2seq as seq2seq
 from tensorflow.contrib.seq2seq import sequence_loss as sequence_loss
 from tensorflow.contrib.layers import legacy_fully_connected as fully_connected
 from nltk.tokenize import word_tokenize
 
 #default values (in alphabetic order)
-default_batch_size = 800
+default_batch_size = 1024
 default_data_dir = './parsed_data/'
 default_embed_dim = 500
-default_hidden_size = 400
+default_hidden_size = 300
 default_info_epoch = 1
 default_init_scale = 0.01
-default_keep_prob = 0.6
-default_layer_num = 3
-default_learning_rate = 0.003
+default_keep_prob = 0.8
+default_layer_num = 2
+default_learning_rate = 0.0005
 default_rnn_type = 2
-default_max_grad_norm = 10
-default_max_epoch = 500
+default_max_grad_norm = 1
+default_max_epoch = 5000
 default_num_sampled = 2000
 default_optimizer = 4
 default_output_filename = './submission.csv'
@@ -175,14 +176,15 @@ class S2S(object):
                          batch_size=para.batch_size, dynamic_pad=True)
       #sparse tensor cannot be sliced
       targets = tf.sparse_tensor_to_dense(captions)
-      self._inputs = targets
+      decoder_in = targets[:, :-1]
+      decoder_out = targets[:, 1:]
       c_lens = tf.to_int32(c_lens)
     else:
       video, v_len = self.get_single_example(para)
       videos, v_lens =\
           tf.train.batch([video, v_len],
                          batch_size=para.batch_size, dynamic_pad=True)
-
+    self._val = videos
     v_lens = tf.to_int32(v_lens)
 
     #word_id to vector
@@ -192,7 +194,7 @@ class S2S(object):
     inputs = fully_connected(videos, para.embed_dim)
 
     if self.is_train():
-      targets_embed = tf.nn.embedding_lookup(W_E, targets)
+      decoder_in_embed = tf.nn.embedding_lookup(W_E, decoder_in)
 
     if self.is_train() and para.keep_prob < 1:
       inputs = tf.nn.dropout(inputs, para.keep_prob)
@@ -203,17 +205,16 @@ class S2S(object):
                         sequence_length=v_lens, dtype=tf.float32)
     encoder_output = tf.reshape(encoder_outputs, [-1, para.hidden_size])
 
-    #self._states = encoder_states
-    #assert isinstance(encoder_states, LSTMStateTuple)
-    #pass_state =\
-    #  LSTMStateTuple(c=tf.zeros(tf.shape(encoder_states.c)),
-    #                 h=encoder_states.h)
+    #pass_states =\
+    #  tuple([LSTMStateTuple(c=tf.zeros(tf.shape(encoder_states[i].c)),
+    #                  h=encoder_states[i].h) for i in range(para.layer_num)])
+    pass_states = encoder_states
 
-    with tf.variable_scope('softmax') as scope:
+    with tf.variable_scope('softmax'):
       softmax_w = tf.get_variable('w', [para.hidden_size, para.vocab_size],
           dtype=tf.float32)
       softmax_b = tf.get_variable('b', [para.vocab_size], dtype=tf.float32)
-    output_fn = lambda output: tf.nn.xw_plus_b(output, softmax_w, softmax_b)
+      output_fn = lambda output: tf.nn.xw_plus_b(output, softmax_w, softmax_b)
 
     decoder_cell =\
       tf.contrib.rnn.MultiRNNCell([rnn_cell() for _ in range(para.layer_num)])
@@ -221,38 +222,35 @@ class S2S(object):
     if self.is_test():
       decoder_fn_inference = seq2seq.simple_decoder_fn_inference(
           output_fn=output_fn,
-          encoder_state=encoder_states,
+          encoder_state=pass_states,
           embeddings=W_E,
           start_of_sequence_id=2,
           end_of_sequence_id=3,
-          maximum_length=80,
+          maximum_length=30,
           num_decoder_symbols=para.vocab_size)
-      decoder_logits, _, _ =\
-        seq2seq.dynamic_rnn_decoder(cell=decoder_cell,
+      with tf.variable_scope('decode', reuse=True):
+        decoder_logits, tmp_states, _ =\
+          seq2seq.dynamic_rnn_decoder(cell=decoder_cell,
                                     decoder_fn=decoder_fn_inference)
       self._prob = tf.nn.softmax(decoder_logits)
       return
 
-    decoder_fn_train = seq2seq.simple_decoder_fn_train(encoder_states)
-    #tf.get_variable_scope().reuse_variables()
+    decoder_fn_train = seq2seq.simple_decoder_fn_train(pass_states)
     with tf.variable_scope('decode', reuse=None):
-      decoder_outputs, _, _ =\
+      decoder_outputs, tmp_states, _ =\
         seq2seq.dynamic_rnn_decoder(cell=decoder_cell,
                                     decoder_fn=decoder_fn_train,
-                                    inputs=targets_embed,
+                                    inputs=decoder_in_embed,
                                     sequence_length=c_lens)
     decoder_outputs = tf.reshape(decoder_outputs, [-1, para.hidden_size])
     c_len_max = tf.reduce_max(c_lens)
 
-    #with tf.variable_scope('softmax') as scope:
-    #  softmax_w = tf.get_variable('w', [para.hidden_size, para.vocab_size],
-    #      dtype=tf.float32)
-    #  softmax_b = tf.get_variable('b', [para.vocab_size], dtype=tf.float32)
-    #logits = tf.nn.xw_plus_b(decoder_outputs, softmax_w, softmax_b)
-
     logits = output_fn(decoder_outputs)
     logits = tf.reshape(logits, [para.batch_size, c_len_max, para.vocab_size])
-    loss = sequence_loss(logits, targets, tf.ones([para.batch_size, c_len_max]))
+    self._prob = tf.nn.softmax(logits)
+
+    msk = tf.sequence_mask(c_lens, dtype=tf.float32)
+    loss = sequence_loss(logits, decoder_out, msk)
 
     self._cost = cost = tf.reduce_mean(loss)
 
@@ -299,7 +297,7 @@ class S2S(object):
             'caption': tf.VarLenFeature(tf.int64)})
       video = tf.reshape(feature['video'], [para.video_len, para.video_dim])
       caption = feature['caption']
-      return video, caption, tf.shape(video)[0], tf.shape(caption)[0]
+      return video, caption, tf.shape(video)[0], tf.shape(caption)[0]-1
 
   @property
   def cost(self): return self._cost
@@ -308,24 +306,38 @@ class S2S(object):
   @property
   def prob(self): return self._prob
   @property
-  def inputs(self): return self._inputs
+  def val(self): return self._val
 
+np.set_printoptions(linewidth=150, edgeitems=4)
 def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
   fetches = {}
   if not model.is_test():
     fetches['cost'] = model.cost
+    #fetches['prob'] = model.prob
+    fetches['val'] = model.val
     if model.is_train():
       fetches['eval'] = model.eval
     #fetches['inputs'] = model.inputs
     vals = sess.run(fetches)
+    #print(vals['prob'])
+    #for var, val in zip(fetches['val'], vals['val']):
+    #  print(var.name)
+    #print(vals['val'])
+    #print(vals['val'].shape)
     return np.exp(vals['cost'])
 
   else:
     fetches['prob'] = model.prob
+    fetches['val'] = model.val
 
     vals = sess.run(fetches)
     prob = vals['prob']
+    #for var, val in zip(fetches['val'], vals['val']):
+    #  print(var.name)
+    print(vals['val'])
+    print(vals['val'].shape)
+    #print(prob)
 
     bests = []
     for i in range(prob.shape[0]):
@@ -339,16 +351,7 @@ def run_epoch(sess, model, args):
         ans.append(vocab[mx_i])
       mn = np.mean(ps)
       bests.append(ans)
-
-    print(ans)
-
-    #print(prob.shape)
-    #print(prob)
-
-    #b_choices = np.array([[prob[(5+k)*sent_len+j, b_target[k, j]]
-    #    for j in range(sent_len)] for k in range(5)])
-    #return chr(ord('a')+
-    #       np.argmax(np.sum(np.log(f_choices)+np.log(b_choices), axis=1)))
+    print(bests)
 
 if __name__ == '__main__':
   with open('MLDS_hw2_data/training_label.json', 'r') as label_json:
@@ -406,7 +409,7 @@ if __name__ == '__main__':
       test_args = copy.deepcopy(args)
       with tf.variable_scope('model', reuse=True, initializer=initializer):
         test_args.mode = 2
-        test_args.batch_size = 1
+        test_args.batch_size = 50
         test_model = S2S(para=test_args)
 
     sv = tf.train.Supervisor(logdir='./logs/')
@@ -420,8 +423,7 @@ if __name__ == '__main__':
         #  valid_perplexity = run_epoch(sess, valid_model, valid_args)
         #  if i%args.info_epoch == 0:
         #    print('Epoch: %d Valid Perplexity: %.4f'%(i, valid_perplexity))
-      for i in range(50):
-        run_epoch(sess, test_model, test_args)
+      run_epoch(sess, test_model, test_args)
       #with open(args.output_filename, 'w') as f:
       #  wrtr = csv.writer(f)
       #  wrtr.writerow(['id', 'answer'])
