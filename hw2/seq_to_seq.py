@@ -144,11 +144,12 @@ class S2S(object):
     if self.is_test():
       filelist = open('testing_list.txt', 'r').read().splitlines()
       filenames = [ 'test_tfrdata/'+fl+'.tfr' for fl in filelist ]
+      f_queue = tf.train.string_input_producer(filenames, shuffle=False)
     else:
       filelist = open('training_list.txt', 'r').read().splitlines()
       filenames = [ 'train_tfrdata/'+fl+'.tfr' for fl in filelist ]
+      f_queue = tf.train.string_input_producer(filenames, shuffle=True)
 
-    f_queue = tf.train.string_input_producer(filenames, shuffle=True)
     reader = tf.TFRecordReader()
 
     _, serialized_example = reader.read(f_queue)
@@ -178,69 +179,48 @@ class S2S(object):
   @property
   def val(self): return self._val
 
-np.set_printoptions(linewidth=150, edgeitems=4)
 def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
   fetches = {}
   if not model.is_test():
     fetches['cost'] = model.cost
-    #fetches['prob'] = model.prob
-    #fetches['val'] = model.val
     if model.is_train():
       fetches['eval'] = model.eval
-    #fetches['inputs'] = model.inputs
     vals = sess.run(fetches)
-    #print(vals['prob'])
-    #for var, val in zip(fetches['val'], vals['val']):
-    #  print(var.name)
-    #print(vals['val'])
-    #print(vals['val'].shape)
     return np.exp(vals['cost'])
 
   else:
     fetches['prob'] = model.prob
-    #fetches['val'] = model.val
 
     vals = sess.run(fetches)
     prob = vals['prob']
-    #np.save('tmp_1', prob)
-    #for var, val in zip(fetches['val'], vals['val']):
-    #  print(var.name)
-    #print(vals['val'])
-    #print(vals['val'].shape)
-    print(prob.shape)
 
     bests = []
     for i in range(prob.shape[0]):
       ps, ans = [], []
       for j in range(prob.shape[1]):
         mx_i = np.argmax(prob[i, j, :])
-        mx_v = prob[i, j, mx_i]
-        print(mx_v, mx_i)
         if mx_i == 3:
           break
-        ps.append(np.log(mx_v))
         ans.append(dct[mx_i])
-      print('-'*80)
-      mn = np.mean(ps)
       bests.append(ans)
-    print(bests)
+    return bests
 
 if __name__ == '__main__':
 
   #default values (in alphabetic order)
-  default_batch_size = 256
+  default_batch_size = 145
   default_data_dir = './parsed_data/'
-  default_embed_dim = 500
-  default_hidden_size = 256
+  default_embed_dim = 512
+  default_hidden_size = 512
   default_info_epoch = 1
-  default_init_scale = 0.01
-  default_keep_prob = 0.8
+  default_init_scale = 0.005
+  default_keep_prob = 0.6
   default_layer_num = 2
   default_learning_rate = 0.001
   default_rnn_type = 2
   default_max_grad_norm = 5
-  default_max_epoch = 5000
+  default_max_epoch = 10000
   default_num_sampled = 2000
   default_optimizer = 4
   default_output_filename = './submission.csv'
@@ -349,7 +329,7 @@ if __name__ == '__main__':
 
   #calculate real epochs
   print('training with about %.3f epochs!'
-        %((args.batch_size*args.max_epoch)/25000))
+        %((args.batch_size*args.max_epoch)/1450))
 
   dct_file = 'train_tfrdata/vocab.txt'
   if tf.gfile.Exists(dct_file):
@@ -378,9 +358,9 @@ if __name__ == '__main__':
       if not tf.gfile.Exists(out_name):
         video = np.load('MLDS_hw2_data/training_data/feat/'+label['id']+'.npy')
         video = video.reshape((-1, 1))
-        min_i = np.argmin([len(caption) for caption in captions[i]])
+        max_i = np.argmax([len(caption) for caption in captions[i]])
         writer = tf.python_io.TFRecordWriter(out_name)
-        word_ids = [ dct[word] for word in captions[i][min_i] ]
+        word_ids = [ dct[word] for word in captions[i][max_i] ]
         word_ids = [2] + word_ids + [3]
         example = tf.train.Example(
           features=tf.train.Features(
@@ -412,7 +392,7 @@ if __name__ == '__main__':
       test_args = copy.deepcopy(args)
       with tf.variable_scope('model', reuse=True, initializer=initializer):
         test_args.mode = 2
-        test_args.batch_size = 50
+        test_args.batch_size = 1
         test_model = S2S(para=test_args)
 
     sv = tf.train.Supervisor(logdir='./logs/')
@@ -426,10 +406,14 @@ if __name__ == '__main__':
         #  valid_perplexity = run_epoch(sess, valid_model, valid_args)
         #  if i%args.info_epoch == 0:
         #    print('Epoch: %d Valid Perplexity: %.4f'%(i, valid_perplexity))
-      run_epoch(sess, test_model, test_args)
-      #with open(args.output_filename, 'w') as f:
-      #  wrtr = csv.writer(f)
-      #  wrtr.writerow(['id', 'answer'])
-      #  for i in range(50):
-      #    result = run_epoch(sess, test_model, test_args)
-      #    wrtr.writerow([i+1, result])
+      results = []
+      for i in range(50):
+        results.extend(run_epoch(sess, test_model, test_args))
+      print(results)
+  filelist = open('testing_list.txt', 'r').read().splitlines()
+  filenames = [ 'test_tfrdata/'+fl+'.tfr' for fl in filelist ]
+  output = [{"caption": result, "id": filename}
+         for result, filename in zip(results, filenames)]
+  with open('output.json', 'w') as f:
+    json.dump(output, f)
+  os.system('python bleu_eval.py output.json MLDS_hw2_data/testing_public_label.json')
