@@ -22,6 +22,15 @@ default_dropout_keep_prob     = 0.5  # for dropout layer
 default_learning_rate         = 0.0001
 default_learning_rate_decay_factor = 1
 
+default_optimizer_type = 4
+default_optimizers = [tf.train.GradientDescentOptimizer, # 0
+                      tf.train.AdadeltaOptimizer,        # 1
+                      tf.train.AdagradOptimizer,         # 2
+                      tf.train.MomentumOptimizer,        # 3
+                      tf.train.AdamOptimizer,            # 4
+                      tf.train.RMSPropOptimizer]         # 5
+
+
 # default value for special vocabs
 PAD = 0
 BOS = 1
@@ -70,24 +79,36 @@ class S2VT(object):
       layer_2_cell = rnn_cell()
 
     # get data in batches
-    video, caption, video_len, caption_len = self.get_single_example(para)
-    videos, captions, video_lens, caption_lens = tf.train.batch([video, caption, video_len, caption_len],
-      batch_size=para.batch_size, dynamic_pad=True)
+    if self.is_train():
+      video, caption, video_len, caption_len = self.get_single_example(para)
+      videos, captions, video_lens, caption_lens = tf.train.batch([video, caption, video_len, caption_len],
+        batch_size=para.batch_size, dynamic_pad=True)
+      # sparse tensor cannot be sliced
+      caption_lens = tf.to_int32(caption_lens)
+      target_captions = tf.sparse_tensor_to_dense(captions)
+      target_captions_input  = target_captions[:,  :-1] # start from <BOS>
+      target_captions_output = target_captions[:, 1:  ] # end by <EOS>
+    else:
+      video, video_len = self.get_single_example(para)
+      videos, video_lens = tf.train.batch([video, video_len],
+        batch_size=para.batch_size, dynamic_pad=True)
+    self._val = videos # why?
 
-    # sparse tensor cannot be sliced
-    target_captions = tf.sparse_tensor_to_dense(captions)
-
-    # video and word embeddings
+    # video and word embeddings as well as word decoding
     with tf.variable_scope('word_embedding'):
       word_embedding_w = tf.get_variable('word_embed',
         [para.vocab_size, para.embedding_dimension])
 
     with tf.variable_scope('video_embedding'):
-      video_embedding_W = tf.get_variable('video_embed',
+      video_embedding_w = tf.get_variable('video_embed',
         [para.video_dimension, para.embedding_dimension])
 
+    with tf.variable_scope('word_decoding'):
+      word_decoding_w = tf.get_variable('word_decode',
+        [para.embedding_dimension, para.vocab_size])
+
     # embed videos and captions
-    embed_video_inputs = tf.matmul(videos, video_embedding_W)
+    embed_video_inputs = tf.matmul(videos, video_embedding_w)
     embed_targets      = tf.nn.embedding_lookup(word_embedding_w, target_captions)
 
     # apply dropout to inputs
@@ -104,7 +125,6 @@ class S2VT(object):
     layer_1_padding = tf.zeros([para.batch_size, para.embedding_dimension])
     layer_2_padding = tf.zeros([para.batch_size, para.embedding_dimension])
 
-
     # ====================== ENCODING STAGE ======================
     for i in range(0, para.video_frame_num):
       if i > 0:
@@ -116,9 +136,33 @@ class S2VT(object):
 
     # ====================== ENCODING STAGE ======================
     for i in range(0, para.max_caption_length):
+      current_caption_embed = tf.nn.embedding_lookup(word_embedding_w, target_captions_input[:,i])
 
+      tf.get_variable_scope().reuse_variables()
+      with tf.variable_scope("layer_1"):
+        layer_1_output, state_1 = layer_1_cell(layer_1_padding, state_1)
+      with tf.variable_scope("layer_2"):
+        layer_2_output, state_2 = layer_2_cell(tf.concat([current_caption_embed, layer_1_output], 1), state_2)
 
+      labels  = tf.expand_dims(target_captions_output[:,i], 1)
+      indices = tf.expand_dims(tf.range(0,para.batch_size,1), 1)
+      one_hot = tf.sparse_to_dense(tf.concat([indices, labels], 1),
+        tf.pack([para.batch_size, para.vocab_size, 1, 0]))
 
+      layer_2_output_logit = tf.matmul(layer_2_output, word_decoding_w)
+      self._prob = layer_2_output_logit
+
+      cross_entropy = tf.nn.softmax_cross_entropy_with_logits(layer_2_output_logit, one_hot)
+
+      self._cost = cost + tf.reduce_mean(cross_entropy)
+
+      # clip gradient norm
+      tvars = tf.trainable_variables()
+      grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
+                   para.max_gradient_norm)
+      optimizer  = default_optimizers[para.optimizer_type](para.learning_rate)
+      self._eval = optimizer.apply_gradients(zip(grads, tvars),
+                     global_step=tf.contrib.framework.get_or_create_global_step())
   # ======================== end of __init__ ======================== #
 
   def is_train(self): return self._para.mode == 0
