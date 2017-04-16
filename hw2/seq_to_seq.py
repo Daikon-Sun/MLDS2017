@@ -254,7 +254,7 @@ if __name__ == '__main__':
 
   #default values (in alphabetic order)
   default_batch_size = 145
-  default_data_dir = './parsed_data/'
+  default_data_dir = './train_tfrdata/'
   default_embed_dim = 512
   default_hidden_size = 256
   default_info_epoch = 1
@@ -267,7 +267,7 @@ if __name__ == '__main__':
   default_max_epoch = 10000
   default_num_sampled = 2000
   default_optimizer = 4
-  default_output_filename = './submission.csv'
+  default_output_filename = './output.json'
   #default_softmax_loss = 0
   default_video_dim = 4096
   default_video_len = 80
