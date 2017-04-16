@@ -13,7 +13,7 @@ from nltk.tokenize import word_tokenize
 class S2S(object):
 
   def __init__(self, para):
-    self.fac = int(para.bidirectional)+1
+    para.fac = int(para.bidirectional)+1
     self._para = para
     if para.rnn_type == 0:#basic rnn
       def unit_cell(fac):
@@ -75,73 +75,105 @@ class S2S(object):
 
     #use dynamic_rnn to build dynamic-time-step rnn
     if not para.bidirectional:
-      _, encoder_states =\
+      encoder_outputs, encoder_states =\
         tf.nn.dynamic_rnn(encoder_cell, inputs,
                           sequence_length=v_lens, dtype=tf.float32)
     else:
-      _, encoder_states =\
+      encoder_outputs, encoder_states =\
         tf.nn.bidirectional_dynamic_rnn(encoder_cell, b_encoder_cell,
                                         inputs, sequence_length=v_lens,
                                         dtype=tf.float32)
-      encoder_states = tuple([LSTMStateTuple(tf.concat([st[0].c, st[1].c], 1),
-                                             tf.concat([st[0].h, st[1].h], 1))
-                              for st in encoder_states])
+      encoder_states = tuple([LSTMStateTuple(tf.concat([f_st.c, f_st.c], 1),
+                                             tf.concat([b_st.h, b_st.h], 1))
+                              for f_st, b_st in zip(encoder_states[0],
+                                                    encoder_states[1])])
+      encoder_outputs = tf.concat([encoder_outputs[0], encoder_outputs[1]], 2)
+
     with tf.variable_scope('softmax'):
-      softmax_w = tf.get_variable('w', [para.hidden_size*self.fac,
+      softmax_w = tf.get_variable('w', [para.hidden_size*para.fac,
                                         para.vocab_size], dtype=tf.float32)
       softmax_b = tf.get_variable('b', [para.vocab_size], dtype=tf.float32)
       output_fn = lambda output: tf.nn.xw_plus_b(output, softmax_w, softmax_b)
 
     decoder_cell =\
-      tf.contrib.rnn.MultiRNNCell([rnn_cell(self.fac)
+      tf.contrib.rnn.MultiRNNCell([rnn_cell(para.fac)
                                    for _ in range(para.layer_num)])
+    if para.attention:
+      (at_keys, at_vals, at_score, at_cons) =\
+        seq2seq.prepare_attention(
+          attention_states=encoder_outputs,
+          attention_option="bahdanau",
+          num_units=para.hidden_size*para.fac)
 
     if self.is_test():
-      decoder_fn_inference = seq2seq.simple_decoder_fn_inference(
-          output_fn=output_fn,
-          encoder_state=encoder_states,
-          embeddings=W_E,
-          start_of_sequence_id=2,
-          end_of_sequence_id=3,
-          maximum_length=30,
-          num_decoder_symbols=para.vocab_size)
+      if para.attention:
+        decoder_fn_inference = seq2seq.attention_decoder_fn_inference(
+            output_fn=output_fn,
+            encoder_state=encoder_states,
+            attention_keys=at_keys,
+            attention_values=at_vals,
+            attention_score_fn=at_score,
+            attention_construct_fn=at_cons,
+            embeddings=W_E,
+            start_of_sequence_id=2,
+            end_of_sequence_id=3,
+            maximum_length=30,
+            num_decoder_symbols=para.vocab_size)
+      else:
+        decoder_fn_inference = seq2seq.simple_decoder_fn_inference(
+            output_fn=output_fn,
+            encoder_state=encoder_states,
+            embeddings=W_E,
+            start_of_sequence_id=2,
+            end_of_sequence_id=3,
+            maximum_length=30,
+            num_decoder_symbols=para.vocab_size)
       with tf.variable_scope('decode', reuse=True):
         decoder_logits, _, _ =\
           seq2seq.dynamic_rnn_decoder(cell=decoder_cell,
                                     decoder_fn=decoder_fn_inference)
       self._prob = tf.nn.softmax(decoder_logits)
-      return
 
-    decoder_fn_train = seq2seq.simple_decoder_fn_train(encoder_states)
-    with tf.variable_scope('decode', reuse=None):
-      decoder_outputs, _, _ =\
-        seq2seq.dynamic_rnn_decoder(cell=decoder_cell,
-                                    decoder_fn=decoder_fn_train,
-                                    inputs=decoder_in_embed,
-                                    sequence_length=c_lens)
-    decoder_outputs =\
-      tf.reshape(decoder_outputs, [-1, para.hidden_size*self.fac])
-    c_len_max = tf.reduce_max(c_lens)
+    else:
+      if para.attention:
+        decoder_fn_train = seq2seq.attention_decoder_fn_train(
+            encoder_state=encoder_states,
+            attention_keys=at_keys,
+            attention_values=at_vals,
+            attention_score_fn=at_score,
+            attention_construct_fn=at_cons)
+      else:
+        decoder_fn_train = seq2seq.simple_decoder_fn_train(encoder_states)
 
-    logits = output_fn(decoder_outputs)
-    logits = tf.reshape(logits, [para.batch_size, c_len_max, para.vocab_size])
-    self._prob = tf.nn.softmax(logits)
+      with tf.variable_scope('decode', reuse=None):
+        (decoder_outputs, _, _) =\
+          seq2seq.dynamic_rnn_decoder(cell=decoder_cell,
+                                      decoder_fn=decoder_fn_train,
+                                      inputs=decoder_in_embed,
+                                      sequence_length=c_lens)
+      decoder_outputs =\
+        tf.reshape(decoder_outputs, [-1, para.hidden_size*para.fac])
+      c_len_max = tf.reduce_max(c_lens)
 
-    msk = tf.sequence_mask(c_lens, dtype=tf.float32)
-    loss = sequence_loss(logits, decoder_out, msk)
+      logits = output_fn(decoder_outputs)
+      logits = tf.reshape(logits, [para.batch_size, c_len_max, para.vocab_size])
+      self._prob = tf.nn.softmax(logits)
 
-    self._cost = cost = tf.reduce_mean(loss)
+      msk = tf.sequence_mask(c_lens, dtype=tf.float32)
+      loss = sequence_loss(logits, decoder_out, msk)
 
-    #if validation or testing, exit here
-    #if not is_train(para.mode): return
+      self._cost = cost = tf.reduce_mean(loss)
 
-    #clip global gradient norm
-    tvars = tf.trainable_variables()
-    grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
-               para.max_grad_norm)
-    optimizer = optimizers[para.optimizer](para.learning_rate)
-    self._eval = optimizer.apply_gradients(zip(grads, tvars),
-                 global_step=tf.contrib.framework.get_or_create_global_step())
+      #if validation or testing, exit here
+      #if not is_train(para.mode): return
+
+      #clip global gradient norm
+      tvars = tf.trainable_variables()
+      grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
+                 para.max_grad_norm)
+      optimizer = optimizers[para.optimizer](para.learning_rate)
+      self._eval = optimizer.apply_gradients(zip(grads, tvars),
+                   global_step=tf.contrib.framework.get_or_create_global_step())
 
   def is_train(self): return self._para.mode == 0
   def is_valid(self): return self._para.mode == 1
@@ -224,10 +256,10 @@ if __name__ == '__main__':
   default_batch_size = 145
   default_data_dir = './parsed_data/'
   default_embed_dim = 512
-  default_hidden_size = 512
+  default_hidden_size = 256
   default_info_epoch = 1
   default_init_scale = 0.005
-  default_keep_prob = 0.6
+  default_keep_prob = 0.7
   default_layer_num = 2
   default_learning_rate = 0.001
   default_rnn_type = 2
