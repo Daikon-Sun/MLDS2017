@@ -140,19 +140,6 @@ class S2VT(object):
     caption = features['caption']
     return video, caption, tf.shape(video)[0], tf.shape(caption)[0]
 
-default_rnn_cell_type         = 1    # 0: BsicRNN, 1: BasicLSTM, 2: FullLSTM, 3: GRU
-default_video_dimension       = 4096 # dimension of each frame
-default_video_frame_num       = 80   # each video has fixed 80 frames          
-default_vocab_size            = 6089
-default_max_caption_length    = 20
-default_embedding_dimension   = 500  # embedding dimension for video and vocab
-default_hidden_units          = 1000 # according to paper
-default_batch_size            = 50
-default_layer_number          = 1
-default_max_gradient_norm     = 10
-default_dropout_keep_prob     = 0.5  # for dropout layer
-default_learning_rate         = 0.0001
-default_learning_rate_decay_factor = 1
 
 if __name__ == '__main__':
   argparser = argparse.ArgumentParser(description='S2VT encoder and decoder')
