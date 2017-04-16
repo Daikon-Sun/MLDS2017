@@ -163,27 +163,46 @@ class S2VT(object):
       optimizer  = default_optimizers[para.optimizer_type](para.learning_rate)
       self._eval = optimizer.apply_gradients(zip(grads, tvars),
                      global_step=tf.contrib.framework.get_or_create_global_step())
+
   # ======================== end of __init__ ======================== #
 
   def is_train(self): return self._para.mode == 0
   def is_valid(self): return self._para.mode == 1
   def  is_test(self): return self._para.mode == 2
 
+  @property
+  def cost(self): return self._cost
+  @property
+  def eval(self): return self._eval
+  @property
+  def prob(self): return self._prob
+  @property
+  def val(self):  return self._val
+
   def get_single_example(self, para):
+
     # first construct a queue containing a list of filenames.
     filename_queue = tf.train.string_input_producer([para.filename], num_epochs=None)
     reader = tf.TFRecordReader()
     _, serialized_example = reader.read(filename_queue)
-    features = tf.parse_single_example(
-      serialized_example,
-      features={
-        'video': tf.FixedLenFeature([para.video_frame_num*para.video_dimension], tf.float32),
-        'caption': tf.VarLenFeature(tf.int64)
-      })
-    video = tf.reshape(feature['video'], [para.video_frame_num, para.video_dimension])
-    caption = features['caption']
-    return video, caption, tf.shape(video)[0], tf.shape(caption)[0]
-
+    
+    if self.is_train():
+      features = tf.parse_single_example(
+        serialized_example,
+        features={
+          'video': tf.FixedLenFeature([para.video_frame_num*para.video_dimension], tf.float32),
+          'caption': tf.VarLenFeature(tf.int64)
+        })
+      video = tf.reshape(features['video'], [para.video_frame_num, para.video_dimension])
+      caption = features['caption']
+      return video, caption, tf.shape(video)[0], tf.shape(caption)[0]
+    else:
+      features = tf.parse_single_example(
+        features={
+          'video': tf.FixedLenFeature([para.video_frame_num*para.video_dimension], tf.float32)
+        })
+      video = tf.reshape(features['video'], [para.video_frame_num, para.video_dimension])
+      return video, tf.shape(video)[0]
 
 if __name__ == '__main__':
   argparser = argparse.ArgumentParser(description='S2VT encoder and decoder')
