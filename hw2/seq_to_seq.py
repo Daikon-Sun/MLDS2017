@@ -220,7 +220,7 @@ def run_epoch(sess, model, args):
         if mx_i == 3:
           break
         ps.append(np.log(mx_v))
-        ans.append(vocab[mx_i])
+        ans.append(dct[mx_i])
       print('-'*80)
       mn = np.mean(ps)
       bests.append(ans)
@@ -354,9 +354,7 @@ if __name__ == '__main__':
   dct_file = 'train_tfrdata/vocab.txt'
   if tf.gfile.Exists(dct_file):
     vocab = open(dct_file, 'r').read().splitlines()
-    vocab = dict([[i, word] for i, word in enumerate(vocab)])
-    args.vocab_size = len(vocab)
-    print('vocab_size = %d'%args.vocab_size)
+    dct = dict([[i, word] for i, word in enumerate(vocab)])
   else:
     with open('MLDS_hw2_data/training_label.json', 'r') as label_json:
       labels = json.load(label_json)
@@ -365,10 +363,12 @@ if __name__ == '__main__':
       sents = [ sent for caption in captions for sent in caption ]
       vocabs = set([ word for sent in sents for word in sent ])
       vocabs = ['<pad>', '<unk>', '<bos>', '<eos>'] + list(vocabs)
-      dct = dict([ (word, i) for i, word in enumerate(vocabs)])
+      dct = dict([(word, i) for i, word in enumerate(vocabs)])
     with open('train_tfrdata/vocab.txt', 'w') as f:
       for word in dct.keys():
         f.write(word+'\n')
+  args.vocab_size = len(dct)
+  print('vocab_size = %d'%args.vocab_size)
 
   with open('MLDS_hw2_data/training_label.json', 'r') as label_json:
     labels = json.load(label_json)
