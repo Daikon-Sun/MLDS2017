@@ -13,32 +13,35 @@ from nltk.tokenize import word_tokenize
 class S2S(object):
 
   def __init__(self, para):
-
+    self.fac = int(para.bidirectional)+1
     self._para = para
     if para.rnn_type == 0:#basic rnn
-      def unit_cell():
-        return tf.contrib.rnn.BasicRNNCell(para.hidden_size)
+      def unit_cell(fac):
+        return tf.contrib.rnn.BasicRNNCell(para.hidden_size * fac)
     elif para.rnn_type == 1:#basic LSTM
-      def unit_cell():
-        return tf.contrib.rnn.BasicLSTMCell(para.hidden_size)
+      def unit_cell(fac):
+        return tf.contrib.rnn.BasicLSTMCell(para.hidden_size * fac)
     elif para.rnn_type == 2:#full LSTM
-      def unit_cell():
-        return tf.contrib.rnn.LSTMCell(para.hidden_size, use_peepholes=True)
+      def unit_cell(fac):
+        return tf.contrib.rnn.LSTMCell(para.hidden_size * fac, use_peepholes=True)
     elif para.rnn_type == 3:#GRU
-      def unit_cell():
-        return tf.contrib.rnn.GRUCell(para.hidden_size)
+      def unit_cell(fac):
+        return tf.contrib.rnn.GRUCell(para.hidden_size * fac)
 
     rnn_cell = unit_cell
 
     #dropout layer
     if self.is_train() and para.keep_prob < 1:
-      def rnn_cell():
+      def rnn_cell(fac):
         return tf.contrib.rnn.DropoutWrapper(
-            unit_cell(), output_keep_prob=para.keep_prob)
+            unit_cell(fac), output_keep_prob=para.keep_prob)
 
     #multi-layer rnn
     encoder_cell =\
-      tf.contrib.rnn.MultiRNNCell([rnn_cell() for _ in range(para.layer_num)])
+      tf.contrib.rnn.MultiRNNCell([rnn_cell(1) for _ in range(para.layer_num)])
+    if para.bidirectional:
+      b_encoder_cell =\
+        tf.contrib.rnn.MultiRNNCell([rnn_cell(1) for _ in range(para.layer_num)])
 
     #feed in data in batches
     if self.is_train():
@@ -71,28 +74,32 @@ class S2S(object):
       inputs = tf.nn.dropout(inputs, para.keep_prob)
 
     #use dynamic_rnn to build dynamic-time-step rnn
-    _, encoder_states =\
-      tf.nn.dynamic_rnn(encoder_cell, inputs,
-                        sequence_length=v_lens, dtype=tf.float32)
-
-    #pass_states =\
-    #  tuple([LSTMStateTuple(c=tf.zeros(tf.shape(encoder_states[i].c)),
-    #                  h=encoder_states[i].h) for i in range(para.layer_num)])
-    pass_states = encoder_states
-
+    if not para.bidirectional:
+      _, encoder_states =\
+        tf.nn.dynamic_rnn(encoder_cell, inputs,
+                          sequence_length=v_lens, dtype=tf.float32)
+    else:
+      _, encoder_states =\
+        tf.nn.bidirectional_dynamic_rnn(encoder_cell, b_encoder_cell,
+                                        inputs, sequence_length=v_lens,
+                                        dtype=tf.float32)
+      encoder_states = tuple([LSTMStateTuple(tf.concat([st[0].c, st[1].c], 1),
+                                             tf.concat([st[0].h, st[1].h], 1))
+                              for st in encoder_states])
     with tf.variable_scope('softmax'):
-      softmax_w = tf.get_variable('w', [para.hidden_size, para.vocab_size],
-          dtype=tf.float32)
+      softmax_w = tf.get_variable('w', [para.hidden_size*self.fac,
+                                        para.vocab_size], dtype=tf.float32)
       softmax_b = tf.get_variable('b', [para.vocab_size], dtype=tf.float32)
       output_fn = lambda output: tf.nn.xw_plus_b(output, softmax_w, softmax_b)
 
     decoder_cell =\
-      tf.contrib.rnn.MultiRNNCell([rnn_cell() for _ in range(para.layer_num)])
+      tf.contrib.rnn.MultiRNNCell([rnn_cell(self.fac)
+                                   for _ in range(para.layer_num)])
 
     if self.is_test():
       decoder_fn_inference = seq2seq.simple_decoder_fn_inference(
           output_fn=output_fn,
-          encoder_state=pass_states,
+          encoder_state=encoder_states,
           embeddings=W_E,
           start_of_sequence_id=2,
           end_of_sequence_id=3,
@@ -105,14 +112,15 @@ class S2S(object):
       self._prob = tf.nn.softmax(decoder_logits)
       return
 
-    decoder_fn_train = seq2seq.simple_decoder_fn_train(pass_states)
+    decoder_fn_train = seq2seq.simple_decoder_fn_train(encoder_states)
     with tf.variable_scope('decode', reuse=None):
       decoder_outputs, _, _ =\
         seq2seq.dynamic_rnn_decoder(cell=decoder_cell,
                                     decoder_fn=decoder_fn_train,
                                     inputs=decoder_in_embed,
                                     sequence_length=c_lens)
-    decoder_outputs = tf.reshape(decoder_outputs, [-1, para.hidden_size])
+    decoder_outputs =\
+      tf.reshape(decoder_outputs, [-1, para.hidden_size*self.fac])
     c_len_max = tf.reduce_max(c_lens)
 
     logits = output_fn(decoder_outputs)
@@ -144,6 +152,10 @@ class S2S(object):
     if self.is_test():
       filelist = open('testing_list.txt', 'r').read().splitlines()
       filenames = [ 'test_tfrdata/'+fl+'.tfr' for fl in filelist ]
+      #filelist = open('testing_list.txt', 'r').read().splitlines()
+      #filenames = [ 'test_tfrdata/'+fl+'.tfr' for fl in filelist ]
+      #filelist = open('time_limited_list.txt', 'r').read().splitlines()
+      #filenames = [ 'time_limited_tfrdata/'+fl+'.tfr' for fl in filelist ]
       f_queue = tf.train.string_input_producer(filenames, shuffle=False)
     else:
       filelist = open('training_list.txt', 'r').read().splitlines()
@@ -317,6 +329,11 @@ if __name__ == '__main__':
                       type=int, default=default_hidden_size,
                       nargs='?', help='Dimension of hidden layer.'
                       '(default:%d)'%default_hidden_size)
+  parser.add_argument('-bi', '--bidirectional',
+                      help='use bidirectional rnn instead of unidirectional '
+                      'rnn during encoding', action='store_true')
+  parser.add_argument('-at', '--attention',
+                      help='add attention', action='store_true')
   #parser.add_argument('-dd', '--data_dir',
   #                    type=str, default=default_data_dir, nargs='?',
   #                    help='Directory where the data are placed.'
