@@ -229,17 +229,17 @@ def run_epoch(sess, model, args):
 if __name__ == '__main__':
 
   #default values (in alphabetic order)
-  default_batch_size = 1024
+  default_batch_size = 256
   default_data_dir = './parsed_data/'
   default_embed_dim = 500
-  default_hidden_size = 300
+  default_hidden_size = 256
   default_info_epoch = 1
   default_init_scale = 0.01
   default_keep_prob = 0.8
   default_layer_num = 2
-  default_learning_rate = 0.0005
+  default_learning_rate = 0.001
   default_rnn_type = 2
-  default_max_grad_norm = 1
+  default_max_grad_norm = 5
   default_max_epoch = 5000
   default_num_sampled = 2000
   default_optimizer = 4
@@ -378,19 +378,19 @@ if __name__ == '__main__':
       if not tf.gfile.Exists(out_name):
         video = np.load('MLDS_hw2_data/training_data/feat/'+label['id']+'.npy')
         video = video.reshape((-1, 1))
+        min_i = np.argmin([len(caption) for caption in captions[i]])
         writer = tf.python_io.TFRecordWriter(out_name)
-        for j, sent in enumerate(captions[i]):
-          word_ids = [ dct[word] for word in sent ]
-          word_ids = [2] + word_ids + [3]
-          example = tf.train.Example(
-            features=tf.train.Features(
-              feature={
-                'video': tf.train.Feature(
-                  float_list=tf.train.FloatList(value=video)),
-                'caption': tf.train.Feature(
-                  int64_list=tf.train.Int64List(value=word_ids))}))
-          serialized = example.SerializeToString()
-          writer.write(serialized)
+        word_ids = [ dct[word] for word in captions[i][min_i] ]
+        word_ids = [2] + word_ids + [3]
+        example = tf.train.Example(
+          features=tf.train.Features(
+            feature={
+              'video': tf.train.Feature(
+                float_list=tf.train.FloatList(value=video)),
+              'caption': tf.train.Feature(
+                int64_list=tf.train.Int64List(value=word_ids))}))
+        serialized = example.SerializeToString()
+        writer.write(serialized)
         writer.close()
 
   with tf.Graph().as_default():
