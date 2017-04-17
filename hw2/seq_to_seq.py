@@ -31,7 +31,7 @@ class S2S(object):
     rnn_cell = unit_cell
 
     #dropout layer
-    if self.is_train() and para.keep_prob < 1:
+    if not self.is_test() and para.keep_prob < 1:
       def rnn_cell(fac):
         return tf.contrib.rnn.DropoutWrapper(
             unit_cell(fac), output_keep_prob=para.keep_prob)
@@ -44,7 +44,7 @@ class S2S(object):
         tf.contrib.rnn.MultiRNNCell([rnn_cell(1) for _ in range(para.layer_num)])
 
     #feed in data in batches
-    if self.is_train():
+    if not self.is_test():
       video, caption, v_len, c_len = self.get_single_example(para)
       videos, captions, v_lens, c_lens =\
           tf.train.batch([video, caption, v_len, c_len],
@@ -60,20 +60,17 @@ class S2S(object):
           tf.train.batch([video, v_len],
                          batch_size=para.batch_size, dynamic_pad=True)
     v_lens = tf.to_int32(v_lens)
-
-    #word_id to vector
     with tf.variable_scope('embedding'):
       W_E = tf.get_variable('W_E', [para.vocab_size, para.embed_dim],
                             dtype=tf.float32)
-    inputs = fully_connected(videos, para.embed_dim)
-
-    if self.is_train():
+    if not self.is_test():
       decoder_in_embed = tf.nn.embedding_lookup(W_E, decoder_in)
 
-    if self.is_train() and para.keep_prob < 1:
+    inputs = fully_connected(videos, para.embed_dim)
+
+    if not self.is_test() and para.keep_prob < 1:
       inputs = tf.nn.dropout(inputs, para.keep_prob)
 
-    #use dynamic_rnn to build dynamic-time-step rnn
     if not para.bidirectional:
       encoder_outputs, encoder_states =\
         tf.nn.dynamic_rnn(encoder_cell, inputs,
@@ -88,6 +85,11 @@ class S2S(object):
                               for f_st, b_st in zip(encoder_states[0],
                                                     encoder_states[1])])
       encoder_outputs = tf.concat([encoder_outputs[0], encoder_outputs[1]], 2)
+
+    self._val1 = videos
+    self._val2 = inputs
+    #ww = [v for v in tf.global_variables() if v.name == "model/fully_connected/weights:0"][0]
+    #bb = [v for v in tf.global_variables() if v.name == "model/fully_connected/bias:0"][0]
 
     with tf.variable_scope('softmax'):
       softmax_w = tf.get_variable('w', [para.hidden_size*para.fac,
@@ -165,7 +167,7 @@ class S2S(object):
       self._cost = cost = tf.reduce_mean(loss)
 
       #if validation or testing, exit here
-      #if not is_train(para.mode): return
+      if self.is_valid(): return
 
       #clip global gradient norm
       tvars = tf.trainable_variables()
@@ -184,14 +186,16 @@ class S2S(object):
     if self.is_test():
       filelist = open('testing_list.txt', 'r').read().splitlines()
       filenames = [ 'test_tfrdata/'+fl+'.tfr' for fl in filelist ]
-      #filelist = open('testing_list.txt', 'r').read().splitlines()
-      #filenames = [ 'test_tfrdata/'+fl+'.tfr' for fl in filelist ]
+      #filelist = open('training_list.txt', 'r').read().splitlines()
+      #filenames = [ 'train_tfrdata/'+fl+'.tfr' for fl in filelist ]
       #filelist = open('time_limited_list.txt', 'r').read().splitlines()
       #filenames = [ 'time_limited_tfrdata/'+fl+'.tfr' for fl in filelist ]
       f_queue = tf.train.string_input_producer(filenames, shuffle=False)
     else:
       filelist = open('training_list.txt', 'r').read().splitlines()
       filenames = [ 'train_tfrdata/'+fl+'.tfr' for fl in filelist ]
+      if self.is_train(): filenames = filenames[:para.train_num]
+      else: filenames = filenames[para.train_num:]
       f_queue = tf.train.string_input_producer(filenames, shuffle=True)
 
     reader = tf.TFRecordReader()
@@ -221,7 +225,9 @@ class S2S(object):
   @property
   def prob(self): return self._prob
   @property
-  def val(self): return self._val
+  def val1(self): return self._val1
+  @property
+  def val2(self): return self._val2
 
 def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
@@ -235,7 +241,6 @@ def run_epoch(sess, model, args):
 
   else:
     fetches['prob'] = model.prob
-
     vals = sess.run(fetches)
     prob = vals['prob']
 
@@ -271,7 +276,7 @@ if __name__ == '__main__':
   #default_softmax_loss = 0
   default_video_dim = 4096
   default_video_len = 80
-  #default_train_num = 522
+  default_train_num = 1450
   #default_wordvec_src = 3
   optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,
                 tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,
@@ -344,10 +349,10 @@ if __name__ == '__main__':
                       type=int, default=default_max_epoch,
                       nargs='?', help='Maximum epoch to be trained.'
                       '(default:%d)'%default_max_epoch)
-  #parser.add_argument('-tn', '--train_num',
-  #                    type=int, default=default_train_num,
-  #                    nargs='?', help='Number of files out of the total 522'
-  #                    'files to be trained. (default:%d)' %default_train_num)
+  parser.add_argument('-tn', '--train_num',
+                      type=int, default=default_train_num,
+                      nargs='?', help='Number of files out of the total 1450'
+                      'files to be trained. (default:%d)' %default_train_num)
   parser.add_argument('-kp', '--keep_prob',
                       type=restricted_float,
                       default=default_keep_prob, nargs='?', help=
@@ -431,12 +436,12 @@ if __name__ == '__main__':
       with tf.variable_scope('model', reuse=None, initializer=initializer):
         train_args.mode = 0
         train_model = S2S(para=train_args)
-    #if args.train_num < 522:
-    #  with tf.name_scope('valid'):
-    #    valid_args = copy.deepcopy(args)
-    #    with tf.variable_scope('model', reuse=True, initializer=initializer):
-    #      valid_args.mode = 1
-    #      valid_model = DepRNN(para=valid_args)
+    if args.train_num < 1450:
+      with tf.name_scope('valid'):
+        valid_args = copy.deepcopy(args)
+        with tf.variable_scope('model', reuse=True, initializer=initializer):
+          valid_args.mode = 1
+          valid_model = S2S(para=valid_args)
     with tf.name_scope('test'):
       test_args = copy.deepcopy(args)
       with tf.variable_scope('model', reuse=True, initializer=initializer):
@@ -451,18 +456,19 @@ if __name__ == '__main__':
         train_perplexity = run_epoch(sess, train_model, train_args)
         if i%args.info_epoch == 0:
           print('Epoch: %d Train Perplexity: %.4f'%(i, train_perplexity))
-        #if args.train_num < 522:
-        #  valid_perplexity = run_epoch(sess, valid_model, valid_args)
-        #  if i%args.info_epoch == 0:
-        #    print('Epoch: %d Valid Perplexity: %.4f'%(i, valid_perplexity))
+        if args.train_num < 1450:
+          valid_perplexity = run_epoch(sess, valid_model, valid_args)
+          if i%args.info_epoch == 0:
+            print('Epoch: %d Valid Perplexity: %.4f'%(i, valid_perplexity))
+            print('-'*120)
       results = []
-      for i in range(50):
+      for i in range(1):
         results.extend(run_epoch(sess, test_model, test_args))
-      print(results)
+      for result in results:
+        print(result)
   filelist = open('testing_list.txt', 'r').read().splitlines()
-  filenames = [ 'test_tfrdata/'+fl+'.tfr' for fl in filelist ]
+  filenames = [ fl+'.tfr' for fl in filelist ]
   output = [{"caption": result, "id": filename}
          for result, filename in zip(results, filenames)]
   with open('output.json', 'w') as f:
     json.dump(output, f)
-  os.system('python bleu_eval.py output.json MLDS_hw2_data/testing_public_label.json')
