@@ -66,7 +66,9 @@ class S2S(object):
     if not self.is_test():
       decoder_in_embed = tf.nn.embedding_lookup(W_E, decoder_in)
 
-    inputs = fully_connected(videos, para.embed_dim)
+    if para.embed_dim < para.video_dim:
+      inputs = fully_connected(videos, para.embed_dim)
+    else: inputs = videos
 
     if not self.is_test() and para.keep_prob < 1:
       inputs = tf.nn.dropout(inputs, para.keep_prob)
@@ -86,11 +88,6 @@ class S2S(object):
                                                     encoder_states[1])])
       encoder_outputs = tf.concat([encoder_outputs[0], encoder_outputs[1]], 2)
 
-    self._val1 = videos
-    self._val2 = inputs
-    #ww = [v for v in tf.global_variables() if v.name == "model/fully_connected/weights:0"][0]
-    #bb = [v for v in tf.global_variables() if v.name == "model/fully_connected/bias:0"][0]
-
     with tf.variable_scope('softmax'):
       softmax_w = tf.get_variable('w', [para.hidden_size*para.fac,
                                         para.vocab_size], dtype=tf.float32)
@@ -101,12 +98,10 @@ class S2S(object):
       tf.contrib.rnn.MultiRNNCell([rnn_cell(para.fac)
                                    for _ in range(para.layer_num)])
     if para.attention:
-      (at_keys, at_vals, at_score, at_cons) =\
-        seq2seq.prepare_attention(
-          attention_states=encoder_outputs,
-          attention_option="bahdanau",
-          num_units=para.hidden_size*para.fac)
-
+      at_keys, at_vals, at_score, at_cons =\
+        seq2seq.prepare_attention(attention_states=encoder_outputs,
+                                  attention_option="bahdanau",
+                                  num_units=para.hidden_size*para.fac)
     if self.is_test():
       if para.attention:
         decoder_fn_inference = seq2seq.attention_decoder_fn_inference(
@@ -137,6 +132,8 @@ class S2S(object):
       self._prob = tf.nn.softmax(decoder_logits)
 
     else:
+      global_step = tf.contrib.framework.get_or_create_global_step()
+
       if para.attention:
         decoder_fn_train = seq2seq.attention_decoder_fn_train(
             encoder_state=encoder_states,
@@ -145,7 +142,22 @@ class S2S(object):
             attention_score_fn=at_score,
             attention_construct_fn=at_cons)
       else:
-        decoder_fn_train = seq2seq.simple_decoder_fn_train(encoder_states)
+        def decoder_fn_train(time, cell_state, cell_input,
+                             cell_output, context):
+          if para.scheduled_sampling:
+            if cell_output is None: nxt_cell_input = cell_input
+            else:
+              epsilon = tf.cast(1-global_step/1000, tf.float32)
+              nxt_cell_input =\
+                tf.cond(tf.less(tf.random_uniform([1]), epsilon)[0],
+                        lambda: cell_input,
+                        lambda: tf.gather(W_E, tf.argmax(
+                                          output_fn(cell_output), 1)))
+          else:
+            nxt_cell_input = cell_input
+          if cell_state is None: #first time
+            return None, encoder_states, nxt_cell_input, cell_output, context
+          else: return None, cell_state, nxt_cell_input, cell_output, context
 
       with tf.variable_scope('decode', reuse=None):
         (decoder_outputs, _, _) =\
@@ -175,7 +187,7 @@ class S2S(object):
                  para.max_grad_norm)
       optimizer = optimizers[para.optimizer](para.learning_rate)
       self._eval = optimizer.apply_gradients(zip(grads, tvars),
-                   global_step=tf.contrib.framework.get_or_create_global_step())
+                   global_step=global_step)
 
   def is_train(self): return self._para.mode == 0
   def is_valid(self): return self._para.mode == 1
@@ -184,10 +196,11 @@ class S2S(object):
   def get_single_example(self, para):
     '''get one example from TFRecorder file using tf default queue runner'''
     if self.is_test():
-      filelist = open('testing_list.txt', 'r').read().splitlines()
-      filenames = [ 'test_tfrdata/'+fl+'.tfr' for fl in filelist ]
-      #filelist = open('training_list.txt', 'r').read().splitlines()
-      #filenames = [ 'train_tfrdata/'+fl+'.tfr' for fl in filelist ]
+      #filelist = open('testing_list.txt', 'r').read().splitlines()
+      #filenames = [ 'test_tfrdata/'+fl+'.tfr' for fl in filelist ]
+      filelist = open('training_list.txt', 'r').read().splitlines()
+      filenames = [ 'train_tfrdata/'+fl+'.tfr' for fl in filelist ]
+      filenames = filenames[:para.train_num]
       #filelist = open('time_limited_list.txt', 'r').read().splitlines()
       #filenames = [ 'time_limited_tfrdata/'+fl+'.tfr' for fl in filelist ]
       f_queue = tf.train.string_input_producer(filenames, shuffle=False)
@@ -206,7 +219,7 @@ class S2S(object):
       feature = tf.parse_single_example(serialized_example, features={
         'video': tf.FixedLenFeature([para.video_len*para.video_dim],
                                     tf.float32)})
-      video = tf.reshape(feature['video'], [para.video_len, para.video_dim])
+      video = tf.reshape(feature['video'], [-1, para.video_dim])[0:80:10]
       return video, tf.shape(video)[0]
     else:
       feature = tf.parse_single_example(serialized_example,
@@ -214,7 +227,7 @@ class S2S(object):
             'video': tf.FixedLenFeature([para.video_len*para.video_dim],
                                         tf.float32),
             'caption': tf.VarLenFeature(tf.int64)})
-      video = tf.reshape(feature['video'], [para.video_len, para.video_dim])
+      video = tf.reshape(feature['video'], [-1, para.video_dim])[0:80:10]
       caption = feature['caption']
       return video, caption, tf.shape(video)[0], tf.shape(caption)[0]-1
 
@@ -234,9 +247,11 @@ def run_epoch(sess, model, args):
   fetches = {}
   if not model.is_test():
     fetches['cost'] = model.cost
+    fetches['val1'] = model.val1
     if model.is_train():
       fetches['eval'] = model.eval
     vals = sess.run(fetches)
+    print(vals['val1'])
     return np.exp(vals['cost'])
 
   else:
@@ -371,6 +386,8 @@ if __name__ == '__main__':
                       'rnn during encoding', action='store_true')
   parser.add_argument('-at', '--attention',
                       help='add attention', action='store_true')
+  parser.add_argument('-ss', '--scheduled_sampling',
+                      help='add scheduled sampling', action='store_true')
   #parser.add_argument('-dd', '--data_dir',
   #                    type=str, default=default_data_dir, nargs='?',
   #                    help='Directory where the data are placed.'
@@ -460,14 +477,15 @@ if __name__ == '__main__':
           valid_perplexity = run_epoch(sess, valid_model, valid_args)
           if i%args.info_epoch == 0:
             print('Epoch: %d Valid Perplexity: %.4f'%(i, valid_perplexity))
-            print('-'*120)
+            print('-'*80)
       results = []
-      for i in range(1):
+      for i in range(50):
         results.extend(run_epoch(sess, test_model, test_args))
-      for result in results:
-        print(result)
+      results = [ ' '.join(result[:-1]) for result in results ]
+      for result in results: print(result)
+
   filelist = open('testing_list.txt', 'r').read().splitlines()
-  filenames = [ fl+'.tfr' for fl in filelist ]
+  filenames = [ fl for fl in filelist ]
   output = [{"caption": result, "id": filename}
          for result, filename in zip(results, filenames)]
   with open('output.json', 'w') as f:
