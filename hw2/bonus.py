@@ -238,7 +238,7 @@ if __name__ == '__main__':
   argparser.add_argument('-vfn', '--video_frame_num',
     type=int, default=default_video_frame_num,
     help='video frame numbers (default:%d)' %default_video_frame_num)
-  argparser.add_argument('-vocab_size', '--vocab_size',
+  argparser.add_argument('-vs', '--vocab_size',
     type=int, default=default_vocab_size,
     help='vocab size (default:%d)' %default_vocab_size)
   argparser.add_argument('-mcl', '--max_caption_length',
@@ -253,5 +253,23 @@ if __name__ == '__main__':
   argparser.add_argument('-bs', '--batch_size',
     type=int, default=default_batch_size,
     help='batch size (default:%d)' %default_batch_size)
+  argparser.add_argument('-ln', '--layer_number',
+    type=int, default=default_layer_number,
+    help='layer number within a layer (default:%d)' %default_layer_number)
+  argparser.add_argument('-gn', '--max_gradient_norm',
+    type=int, default=default_max_gradient_norm,
+    help='maximum gradient norm (default:%d' %max_gradient_norm)
+  argparser.add_argument('-kp', '--dropout_keep_prob',
+    type=int, default=default_dropout_keep_prob,
+    help='keep probability of dropout layer (default:%d)' %default_dropout_keep_prob)
+  argparser.add_argument('-lr', '--learning_rate',
+    type=int, default=default_learning_rate,
+    help='learning rate (default:%d' %default_learning_rate)
+  argparser.add_argument('-lrdf', '--learning_rate_decay_factor',
+    type=int, default=default_learning_rate_decay_factor,
+    help='learning rate decay factor (default:%d)' %default_learning_rate_decay_factor)
+  argparser.add_argument('-ot', '--optimizer_type',
+    type=int, default=default_optimizer_type,
+    help='type of optimizer (default:%d)' %default_optimizer_type)
   args = argparser.parse_args()
 
