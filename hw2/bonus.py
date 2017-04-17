@@ -148,6 +148,7 @@ class S2VT(object):
     with tf.variable_scope('building_model', reuse=True) as scope:
       if self.is_train():
         for i in range(0, para.max_caption_length):
+          
           current_caption_embed = tf.nn.embedding_lookup(word_embedding_w, target_captions_input[:,i])
 
           with tf.variable_scope("layer_1"):
