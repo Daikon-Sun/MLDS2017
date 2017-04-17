@@ -4,6 +4,7 @@ import tensorflow as tf
 import argparse
 import os
 import sys
+import copy
 import tensorflow.contrib.seq2seq as seq2seq
 from tensorflow.contrib.layers import safe_embedding_lookup_sparse as embedding_lookup_unique
 from tensorflow.contrib.rnn import LSTMCell, LSTMStateTuple, GRUCell
@@ -18,9 +19,14 @@ default_hidden_units          = 1000 # according to paper
 default_batch_size            = 50
 default_layer_number          = 1
 default_max_gradient_norm     = 10
-default_dropout_keep_prob     = 0.5  # for dropout layer
+default_dropout_keep_prob     = 0.5    # for dropout layer
+default_init_scale            = 0.005  # for tensorflow initializer
+default_max_epoch             = 10000
+default_info_epoch            = 1
+default_testing_video_num     = 50     # number of testing videos
 default_learning_rate         = 0.0001
 default_learning_rate_decay_factor = 1
+
 
 default_optimizer_type = 4
 default_optimizers = [tf.train.GradientDescentOptimizer, # 0
@@ -238,9 +244,9 @@ if __name__ == '__main__':
   argparser.add_argument('-vfn', '--video_frame_num',
     type=int, default=default_video_frame_num,
     help='video frame numbers (default:%d)' %default_video_frame_num)
-  argparser.add_argument('-vs', '--vocab_size',
-    type=int, default=default_vocab_size,
-    help='vocab size (default:%d)' %default_vocab_size)
+  #argparser.add_argument('-vs', '--vocab_size',
+  #  type=int, default=default_vocab_size,
+  #  help='vocab size (default:%d)' %default_vocab_size)
   argparser.add_argument('-mcl', '--max_caption_length',
     type=int, default=default_max_caption_length,
     help='maximum output caption length (default:%d)' %default_max_caption_length)
@@ -271,5 +277,83 @@ if __name__ == '__main__':
   argparser.add_argument('-ot', '--optimizer_type',
     type=int, default=default_optimizer_type,
     help='type of optimizer (default:%d)' %default_optimizer_type)
+  argparser.add_argument('-is', '--init_scale',
+    type=int, default=default_init_scale,
+    help='initialization scale for tensorflow initializer (default:%d', %default_init_scale)
+  argparser.add_argument('-me', '--max_epoch',
+    type=int, default=default_max_epoch,
+    help='maximum training epoch (default:%d' %default_max_epoch)
+  argparser.add_argument('-ie', '--info_epoch',
+    type=int, default=default_info_epoch,
+    help='show training information for each (default:%d) epochs' %default_info_epoch)
   args = argparser.parse_args()
+
+
+  print('S2VT start...\n')
+  
+  print('Loading vocab dictionary...\n')
+  vocab_dictionary_path = 'MLDS_hw2_data/training_data/jason_vocab.json'
+  with open(vocab_dictionary_path) as vocab_dictionary_json:
+    vocab_dictionary = json.load(vocab_dictionary_json)
+  args.vocab_size = len(vocab_dictionary)
+  print('vocab_size = %d' %args.vocab_size)
+
+  with tf.Graph().as_default():
+    initializer = tf.random_unifrom_initializer(-args.init_scale, args.init_scale)
+
+  # training model
+  with tf.name_scope('train'):
+    train_args = copy.deepcopy(args)
+    with tf.variable_scope('model', reuse=None, initializer=initializer):
+      train_args.mode = default_training_mode
+      train_model = S2VT(para=train_args)
+  
+  # testing model
+  with tf.name_scope('test'):
+    test_args = copy.deepcopy(args)
+    with tf.variable_scope('model', reuse=True, initializer=initializer):
+      test_args.mode = default_testing_mode
+      test_args.batch_size = 1
+      test_model = S2VT(para=test_args)
+
+  sv = tf.train.Supervisor(logdir='./jason/logs/')
+  with sv.managed_session() as sess:
+    # training
+    for i in range(1, args.max_epoch + 1):
+      train_perplexity = run_epcoh(sess, train_model, train_args)
+      if i % args.info_epoch == 0:
+        print('Epoch #%d  Train Perplexity: %.4f' %(i, train_perplexity))
+
+    # testing
+    results = []
+    for i in range(default_testing_video_num)
+      results.extend(run_epoch(sess, test_model, test_args))
+    print(results)
+  
+  # compute BLEU score
+  filenames = open('MLDS_hw2_data/testing_id.txt', 'r').read().splitlines()
+  output = [{"caption": result, "id": filename}
+            for result, filename in zip(results, filenames)]
+  with open('./jason/output.json', 'w') as f:
+    json.dump(output, f)
+  os.system('python3 bleu_eval.py ./jason/output.json MLDS_hw2_data/testing_public_label.json')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
