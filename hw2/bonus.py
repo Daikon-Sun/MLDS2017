@@ -17,7 +17,7 @@ default_vocab_size            = 6089
 default_max_caption_length    = 20
 default_embedding_dimension   = 500  # embedding dimension for video and vocab
 default_hidden_units          = 1000 # according to paper
-default_batch_size            = 50
+default_batch_size            = 10
 default_layer_number          = 1
 default_max_gradient_norm     = 10
 default_dropout_keep_prob     = 0.5    # for dropout layer
@@ -146,35 +146,54 @@ class S2VT(object):
 
     # ====================== DECODING STAGE ======================
     with tf.variable_scope('building_model', reuse=True) as scope:
-      for i in range(0, para.max_caption_length):
-        current_caption_embed = tf.nn.embedding_lookup(word_embedding_w, target_captions_input[:,i])
+      if self.is_train():
+        for i in range(0, para.max_caption_length):
+          current_caption_embed = tf.nn.embedding_lookup(word_embedding_w, target_captions_input[:,i])
 
-        with tf.variable_scope("layer_1"):
-          layer_1_output, state_1 = layer_1_cell(layer_1_padding, state_1)
-        with tf.variable_scope("layer_2"):
-          layer_2_output, state_2 = layer_2_cell(tf.concat([current_caption_embed, layer_1_output], 1), state_2)
+          with tf.variable_scope("layer_1"):
+            layer_1_output, state_1 = layer_1_cell(layer_1_padding, state_1)
+          with tf.variable_scope("layer_2"):
+            layer_2_output, state_2 = layer_2_cell(tf.concat([current_caption_embed, layer_1_output], 1), state_2)
 
-        labels  = tf.expand_dims(target_captions_output[:,i], 1)
-        indices = tf.expand_dims(tf.range(0,para.batch_size,1), 1)
-        indices = tf.to_int64(indices)
-        one_hot = tf.sparse_to_dense(tf.concat([indices, labels], 1),
-          [para.batch_size, para.vocab_size], 1, 0)
+          labels  = tf.expand_dims(target_captions_output[:,i], 1)
+          indices = tf.expand_dims(tf.range(0,para.batch_size,1), 1)
+          indices = tf.to_int64(indices)
+          one_hot = tf.sparse_to_dense(tf.concat([indices, labels], 1),
+            [para.batch_size, para.vocab_size], 1, 0)
 
-        layer_2_output_logit = tf.matmul(layer_2_output, word_decoding_w)
-        self._prob = layer_2_output_logit
+          layer_2_output_logit = tf.matmul(layer_2_output, word_decoding_w)
+          self._prob = layer_2_output_logit
 
-        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=layer_2_output_logit, labels=one_hot)
+          cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=layer_2_output_logit, labels=one_hot)
 
-        cost += tf.reduce_mean(cross_entropy)
+          cost += tf.reduce_mean(cross_entropy)
+      else:
+        self._result = []
+        for i in range(0, para.max_caption_length):
+          if i == 0:
+            current_caption_embed = tf.nn.embedding_lookup(word_embedding_w, tf.ones([1], dtype=tf.int64))
+          with tf.variable_scope("layer_1"):
+            layer_1_output, state_1 = layer_1_cell(layer_1_padding, state_1)
+          with tf.variable_scope("layer_2"):
+            layer_2_output, state_2 = layer_2_cell(tf.concat([current_caption_embed, layer_1_output], 1), state_2)
 
-    self._cost = cost
-    # clip gradient norm
-    tvars = tf.trainable_variables()
-    grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
-                 para.max_gradient_norm)
-    optimizer  = default_optimizers[para.optimizer_type](para.learning_rate)
-    self._eval = optimizer.apply_gradients(zip(grads, tvars),
-                   global_step=tf.contrib.framework.get_or_create_global_step())
+          layer_2_output_logit = tf.matmul(layer_2_output, word_decoding_w)
+          max_prob_index = tf.argmax(layer_2_output_logit, 1)[0]
+          self._result.append(max_prob_index)
+          if max_prob_index == EOS:
+            break
+          else:
+            current_caption_embed = tf.nn.embedding_lookup(word_embedding_w, max_prob_index)
+            current_caption_embed = tf.expand_dims(current_caption_embed, 0)
+    if self.is_train():
+      self._cost = cost
+      # clip gradient norm
+      tvars = tf.trainable_variables()
+      grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
+                   para.max_gradient_norm)
+      optimizer  = default_optimizers[para.optimizer_type](para.learning_rate)
+      self._eval = optimizer.apply_gradients(zip(grads, tvars),
+                     global_step=tf.contrib.framework.get_or_create_global_step())
 
   # ======================== end of __init__ ======================== #
 
@@ -195,14 +214,16 @@ class S2VT(object):
     if self.is_train():
       file_list_path = 'MLDS_hw2_data/training_data/Training_Data_TFR/training_list.txt'
       filenames = open(file_list_path).read().splitlines()
-      filename_queue = tf.train.string_input_producer(filenames, shuffle=True)
+      files = ['MLDS_hw2_data/training_data/Training_Data_TFR/'+filename for filename in filenames]
+      file_queue = tf.train.string_input_producer(files, shuffle=True)
     else:
       file_list_path = 'MLDS_hw2_data/testing_data/Testing_Data_TFR/testing_list.txt'
       filenames = open(file_list_path).read().splitlines()
-      filename_queue = tf.train.string_input_producer(filenames, shuffle=False)
+      files = ['MLDS_hw2_data/testing_data/Testing_Data_TFR/'+filename for filename in filenames]
+      file_queue = tf.train.string_input_producer(files, shuffle=False)
 
     reader = tf.TFRecordReader()
-    _, serialized_example = reader.read(filename_queue)
+    _, serialized_example = reader.read(file_queue)
 
     if self.is_train():
       features = tf.parse_single_example(
@@ -329,11 +350,11 @@ if __name__ == '__main__':
         test_args.batch_size = 1
         test_model = S2VT(para=test_args)
 
-    sv = tf.train.Supervisor(logdir='./jason/logs/')
+    sv = tf.train.Supervisor(logdir='jason/logs/')
     with sv.managed_session() as sess:
       # training
       for i in range(1, args.max_epoch + 1):
-        train_perplexity = run_epcoh(sess, train_model, train_args)
+        train_perplexity = run_epoch(sess, train_model, train_args)
         if i % args.info_epoch == 0:
           print('Epoch #%d  Train Perplexity: %.4f' %(i, train_perplexity))
 
@@ -347,6 +368,6 @@ if __name__ == '__main__':
     filenames = open('MLDS_hw2_data/testing_id.txt', 'r').read().splitlines()
     output = [{"caption": result, "id": filename}
               for result, filename in zip(results, filenames)]
-    with open('./jason/output.json', 'w') as f:
+    with open('jason/output.json', 'w') as f:
       json.dump(output, f)
-    os.system('python3 bleu_eval.py ./jason/output.json MLDS_hw2_data/testing_public_label.json')
+    os.system('python3 bleu_eval.py jason/output.json MLDS_hw2_data/testing_public_label.json')
