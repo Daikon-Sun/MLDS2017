@@ -185,7 +185,7 @@ class S2VT(object):
     filename_queue = tf.train.string_input_producer([para.filename], num_epochs=None)
     reader = tf.TFRecordReader()
     _, serialized_example = reader.read(filename_queue)
-    
+
     if self.is_train():
       features = tf.parse_single_example(
         serialized_example,
@@ -203,6 +203,29 @@ class S2VT(object):
         })
       video = tf.reshape(features['video'], [para.video_frame_num, para.video_dimension])
       return video, tf.shape(video)[0]
+
+def run_epoch(sess, model, args):
+  fetches = {}
+  if not model.is_test():
+    fetches['cost'] = model.cost
+    if model.is_train():
+      fetches['evel'] = model.eval
+    vals = sess.run(fetches)
+    return np.exp(vals['cost'])
+  else:
+    fetches['prob'] = model.prob
+    vals = sess.run(fetches)
+    prob = vals['prob']
+    bests = []
+    for i in range(prob.shape[0]):
+      ans = []
+      for j in range(prob.shape[1]):
+        max_id = np.argmax(prob[i, j, :])
+        if max_id == EOS:
+          break
+        ans.append(dct[max_id])
+      bests.append(ans)
+    return bests
 
 if __name__ == '__main__':
   argparser = argparse.ArgumentParser(description='S2VT encoder and decoder')
