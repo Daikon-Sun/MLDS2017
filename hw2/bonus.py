@@ -5,6 +5,7 @@ import argparse
 import os
 import sys
 import copy
+import json
 import tensorflow.contrib.seq2seq as seq2seq
 from tensorflow.contrib.layers import safe_embedding_lookup_sparse as embedding_lookup_unique
 from tensorflow.contrib.rnn import LSTMCell, LSTMStateTuple, GRUCell
@@ -90,7 +91,7 @@ class S2VT(object):
       videos, captions, video_lens, caption_lens = tf.train.batch([video, caption, video_len, caption_len],
         batch_size=para.batch_size, dynamic_pad=True)
       # sparse tensor cannot be sliced
-      caption_lens = tf.to_int32(caption_lens)
+      caption_lens = tf.to_int64(caption_lens)
       target_captions = tf.sparse_tensor_to_dense(captions)
       target_captions_input  = target_captions[:,  :-1] # start from <BOS>
       target_captions_output = target_captions[:, 1:  ] # end by <EOS>
@@ -111,10 +112,12 @@ class S2VT(object):
 
     with tf.variable_scope('word_decoding'):
       word_decoding_w = tf.get_variable('word_decode',
-        [para.embedding_dimension, para.vocab_size])
+        [para.hidden_units, para.vocab_size])
 
     # embed videos and captions
-    embed_video_inputs = tf.matmul(videos, video_embedding_w)
+    video_flat = tf.reshape(videos, [-1, para.video_dimension])
+    embed_video_inputs = tf.matmul(video_flat, video_embedding_w)
+    embed_video_inputs = tf.reshape(embed_video_inputs, [para.batch_size, para.video_frame_num, para.embedding_dimension])
     embed_targets      = tf.nn.embedding_lookup(word_embedding_w, target_captions)
 
     # apply dropout to inputs
@@ -125,7 +128,7 @@ class S2VT(object):
     state_1 = tf.zeros([para.batch_size, layer_1_cell.state_size])
     state_2 = tf.zeros([para.batch_size, layer_2_cell.state_size])
     probabilities = []
-    loss = 0.0
+    cost = 0.0
 
     # paddings for 1st and 2nd layers
     layer_1_padding = tf.zeros([para.batch_size, para.embedding_dimension])
@@ -138,7 +141,7 @@ class S2VT(object):
       with tf.variable_scope("layer_1"):
         layer_1_output, state_1 = layer_1_cell(embed_video_inputs[:,i,:], state_1) # batch_size x frame_num x embed_dim
       with tf.variable_scope("layer_2"):
-        layer_2_output, state_2 = layer_2_cell(tf.concat([layer_2_padding, layer_1_output], 1))
+        layer_2_output, state_2 = layer_2_cell(tf.concat([layer_2_padding, layer_1_output], 1), state_2)
 
     # ====================== ENCODING STAGE ======================
     for i in range(0, para.max_caption_length):
@@ -152,23 +155,25 @@ class S2VT(object):
 
       labels  = tf.expand_dims(target_captions_output[:,i], 1)
       indices = tf.expand_dims(tf.range(0,para.batch_size,1), 1)
+      indices = tf.to_int64(indices)
       one_hot = tf.sparse_to_dense(tf.concat([indices, labels], 1),
-        tf.pack([para.batch_size, para.vocab_size, 1, 0]))
+        [para.batch_size, para.vocab_size], 1, 0)
 
       layer_2_output_logit = tf.matmul(layer_2_output, word_decoding_w)
       self._prob = layer_2_output_logit
 
-      cross_entropy = tf.nn.softmax_cross_entropy_with_logits(layer_2_output_logit, one_hot)
+      cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=layer_2_output_logit, labels=one_hot)
 
-      self._cost = cost + tf.reduce_mean(cross_entropy)
+      cost = cost + tf.reduce_mean(cross_entropy)
 
-      # clip gradient norm
-      tvars = tf.trainable_variables()
-      grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
-                   para.max_gradient_norm)
-      optimizer  = default_optimizers[para.optimizer_type](para.learning_rate)
-      self._eval = optimizer.apply_gradients(zip(grads, tvars),
-                     global_step=tf.contrib.framework.get_or_create_global_step())
+    self._cost = cost
+    # clip gradient norm
+    tvars = tf.trainable_variables()
+    grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
+                 para.max_gradient_norm)
+    optimizer  = default_optimizers[para.optimizer_type](para.learning_rate)
+    self._eval = optimizer.apply_gradients(zip(grads, tvars),
+                   global_step=tf.contrib.framework.get_or_create_global_step())
 
   # ======================== end of __init__ ======================== #
 
@@ -186,18 +191,14 @@ class S2VT(object):
   def val(self):  return self._val
 
   def get_single_example(self, para):
-
-    # first construct a queue containing a list of filenames.
-    filename_queue = tf.train.string_input_producer([para.filename], num_epochs=None)
-    
     if self.is_train():
       file_list_path = 'MLDS_hw2_data/training_data/Training_Data_TFR/training_list.txt'
       filenames = open(file_list_path).read().splitlines()
-      filename_queue = tf.train.string_input_producer([filenames], shuffle=True)
+      filename_queue = tf.train.string_input_producer(filenames, shuffle=True)
     else:
       file_list_path = 'MLDS_hw2_data/testing_data/Testing_Data_TFR/testing_list.txt'
       filenames = open(file_list_path).read().splitlines()
-      filename_queue = tf.train.string_input_producer([filenames], shuffle=False)
+      filename_queue = tf.train.string_input_producer(filenames, shuffle=False)
 
     reader = tf.TFRecordReader()
     _, serialized_example = reader.read(filename_queue)
@@ -274,7 +275,7 @@ if __name__ == '__main__':
     help='layer number within a layer (default:%d)' %default_layer_number)
   argparser.add_argument('-gn', '--max_gradient_norm',
     type=int, default=default_max_gradient_norm,
-    help='maximum gradient norm (default:%d' %max_gradient_norm)
+    help='maximum gradient norm (default:%d' %default_max_gradient_norm)
   argparser.add_argument('-kp', '--dropout_keep_prob',
     type=int, default=default_dropout_keep_prob,
     help='keep probability of dropout layer (default:%d)' %default_dropout_keep_prob)
@@ -309,7 +310,7 @@ if __name__ == '__main__':
   print('vocab_size = %d' %args.vocab_size)
 
   with tf.Graph().as_default():
-    initializer = tf.random_unifrom_initializer(-args.init_scale, args.init_scale)
+    initializer = tf.random_uniform_initializer(-args.init_scale, args.init_scale)
 
   # training model
   with tf.name_scope('train'):
@@ -336,7 +337,7 @@ if __name__ == '__main__':
 
     # testing
     results = []
-    for i in range(default_testing_video_num)
+    for i in range(default_testing_video_num):
       results.extend(run_epoch(sess, test_model, test_args))
     print(results)
   
