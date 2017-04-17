@@ -12,7 +12,7 @@ from tensorflow.contrib.rnn import LSTMCell, LSTMStateTuple, GRUCell
 
 default_rnn_cell_type         = 1    # 0: BsicRNN, 1: BasicLSTM, 2: FullLSTM, 3: GRU
 default_video_dimension       = 4096 # dimension of each frame
-default_video_frame_num       = 80   # each video has fixed 80 frames          
+default_video_frame_num       = 80   # each video has fixed 80 frames
 default_vocab_size            = 6089
 default_max_caption_length    = 20
 default_embedding_dimension   = 500  # embedding dimension for video and vocab
@@ -118,7 +118,8 @@ class S2VT(object):
     video_flat = tf.reshape(videos, [-1, para.video_dimension])
     embed_video_inputs = tf.matmul(video_flat, video_embedding_w)
     embed_video_inputs = tf.reshape(embed_video_inputs, [para.batch_size, para.video_frame_num, para.embedding_dimension])
-    embed_targets      = tf.nn.embedding_lookup(word_embedding_w, target_captions)
+    if self.is_train():
+      embed_targets    = tf.nn.embedding_lookup(word_embedding_w, target_captions)
 
     # apply dropout to inputs
     if self.is_train() and para.dropout_keep_prob < 1:
@@ -127,44 +128,44 @@ class S2VT(object):
     # Initial state of the LSTM memory.
     state_1 = tf.zeros([para.batch_size, layer_1_cell.state_size])
     state_2 = tf.zeros([para.batch_size, layer_2_cell.state_size])
-    probabilities = []
-    cost = 0.0
+    cost = tf.constant(0.0)
 
     # paddings for 1st and 2nd layers
     layer_1_padding = tf.zeros([para.batch_size, para.embedding_dimension])
     layer_2_padding = tf.zeros([para.batch_size, para.embedding_dimension])
 
     # ====================== ENCODING STAGE ======================
-    for i in range(0, para.video_frame_num):
-      if i > 0:
-        tf.get_variable_scope().reuse_variables()
-      with tf.variable_scope("layer_1"):
-        layer_1_output, state_1 = layer_1_cell(embed_video_inputs[:,i,:], state_1) # batch_size x frame_num x embed_dim
-      with tf.variable_scope("layer_2"):
-        layer_2_output, state_2 = layer_2_cell(tf.concat([layer_2_padding, layer_1_output], 1), state_2)
+    with tf.variable_scope('building_model') as scope:
+      for i in range(0, para.video_frame_num):
+        if i > 0:
+          scope.reuse_variables()
+        with tf.variable_scope("layer_1"):
+          layer_1_output, state_1 = layer_1_cell(embed_video_inputs[:,i,:], state_1) # batch_size x frame_num x embed_dim
+        with tf.variable_scope("layer_2"):
+          layer_2_output, state_2 = layer_2_cell(tf.concat([layer_2_padding, layer_1_output], 1), state_2)
 
-    # ====================== ENCODING STAGE ======================
-    for i in range(0, para.max_caption_length):
-      current_caption_embed = tf.nn.embedding_lookup(word_embedding_w, target_captions_input[:,i])
+    # ====================== DECODING STAGE ======================
+    with tf.variable_scope('building_model', reuse=True) as scope:
+      for i in range(0, para.max_caption_length):
+        current_caption_embed = tf.nn.embedding_lookup(word_embedding_w, target_captions_input[:,i])
 
-      tf.get_variable_scope().reuse_variables()
-      with tf.variable_scope("layer_1"):
-        layer_1_output, state_1 = layer_1_cell(layer_1_padding, state_1)
-      with tf.variable_scope("layer_2"):
-        layer_2_output, state_2 = layer_2_cell(tf.concat([current_caption_embed, layer_1_output], 1), state_2)
+        with tf.variable_scope("layer_1"):
+          layer_1_output, state_1 = layer_1_cell(layer_1_padding, state_1)
+        with tf.variable_scope("layer_2"):
+          layer_2_output, state_2 = layer_2_cell(tf.concat([current_caption_embed, layer_1_output], 1), state_2)
 
-      labels  = tf.expand_dims(target_captions_output[:,i], 1)
-      indices = tf.expand_dims(tf.range(0,para.batch_size,1), 1)
-      indices = tf.to_int64(indices)
-      one_hot = tf.sparse_to_dense(tf.concat([indices, labels], 1),
-        [para.batch_size, para.vocab_size], 1, 0)
+        labels  = tf.expand_dims(target_captions_output[:,i], 1)
+        indices = tf.expand_dims(tf.range(0,para.batch_size,1), 1)
+        indices = tf.to_int64(indices)
+        one_hot = tf.sparse_to_dense(tf.concat([indices, labels], 1),
+          [para.batch_size, para.vocab_size], 1, 0)
 
-      layer_2_output_logit = tf.matmul(layer_2_output, word_decoding_w)
-      self._prob = layer_2_output_logit
+        layer_2_output_logit = tf.matmul(layer_2_output, word_decoding_w)
+        self._prob = layer_2_output_logit
 
-      cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=layer_2_output_logit, labels=one_hot)
+        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=layer_2_output_logit, labels=one_hot)
 
-      cost = cost + tf.reduce_mean(cross_entropy)
+        cost += tf.reduce_mean(cross_entropy)
 
     self._cost = cost
     # clip gradient norm
@@ -215,6 +216,7 @@ class S2VT(object):
       return video, caption, tf.shape(video)[0], tf.shape(caption)[0]
     else:
       features = tf.parse_single_example(
+        serialized_example,
         features={
           'video': tf.FixedLenFeature([para.video_frame_num*para.video_dimension], tf.float32)
         })
@@ -301,7 +303,7 @@ if __name__ == '__main__':
 
 
   print('S2VT start...\n')
-  
+
   print('Loading vocab dictionary...\n')
   vocab_dictionary_path = 'MLDS_hw2_data/training_data/jason_vocab.json'
   with open(vocab_dictionary_path) as vocab_dictionary_json:
@@ -312,55 +314,39 @@ if __name__ == '__main__':
   with tf.Graph().as_default():
     initializer = tf.random_uniform_initializer(-args.init_scale, args.init_scale)
 
-  # training model
-  with tf.name_scope('train'):
-    train_args = copy.deepcopy(args)
-    with tf.variable_scope('model', reuse=None, initializer=initializer):
-      train_args.mode = default_training_mode
-      train_model = S2VT(para=train_args)
-  
-  # testing model
-  with tf.name_scope('test'):
-    test_args = copy.deepcopy(args)
-    with tf.variable_scope('model', reuse=True, initializer=initializer):
-      test_args.mode = default_testing_mode
-      test_args.batch_size = 1
-      test_model = S2VT(para=test_args)
+    # training model
+    with tf.name_scope('train'):
+      train_args = copy.deepcopy(args)
+      with tf.variable_scope('model', reuse=None, initializer=initializer):
+        train_args.mode = default_training_mode
+        train_model = S2VT(para=train_args)
 
-  sv = tf.train.Supervisor(logdir='./jason/logs/')
-  with sv.managed_session() as sess:
-    # training
-    for i in range(1, args.max_epoch + 1):
-      train_perplexity = run_epcoh(sess, train_model, train_args)
-      if i % args.info_epoch == 0:
-        print('Epoch #%d  Train Perplexity: %.4f' %(i, train_perplexity))
+    # testing model
+    with tf.name_scope('test'):
+      test_args = copy.deepcopy(args)
+      with tf.variable_scope('model', reuse=True, initializer=initializer):
+        test_args.mode = default_testing_mode
+        test_args.batch_size = 1
+        test_model = S2VT(para=test_args)
 
-    # testing
-    results = []
-    for i in range(default_testing_video_num):
-      results.extend(run_epoch(sess, test_model, test_args))
-    print(results)
-  
-  # compute BLEU score
-  filenames = open('MLDS_hw2_data/testing_id.txt', 'r').read().splitlines()
-  output = [{"caption": result, "id": filename}
-            for result, filename in zip(results, filenames)]
-  with open('./jason/output.json', 'w') as f:
-    json.dump(output, f)
-  os.system('python3 bleu_eval.py ./jason/output.json MLDS_hw2_data/testing_public_label.json')
+    sv = tf.train.Supervisor(logdir='./jason/logs/')
+    with sv.managed_session() as sess:
+      # training
+      for i in range(1, args.max_epoch + 1):
+        train_perplexity = run_epcoh(sess, train_model, train_args)
+        if i % args.info_epoch == 0:
+          print('Epoch #%d  Train Perplexity: %.4f' %(i, train_perplexity))
 
+      # testing
+      results = []
+      for i in range(default_testing_video_num):
+        results.extend(run_epoch(sess, test_model, test_args))
+      print(results)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    # compute BLEU score
+    filenames = open('MLDS_hw2_data/testing_id.txt', 'r').read().splitlines()
+    output = [{"caption": result, "id": filename}
+              for result, filename in zip(results, filenames)]
+    with open('./jason/output.json', 'w') as f:
+      json.dump(output, f)
+    os.system('python3 bleu_eval.py ./jason/output.json MLDS_hw2_data/testing_public_label.json')
