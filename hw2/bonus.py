@@ -189,6 +189,16 @@ class S2VT(object):
 
     # first construct a queue containing a list of filenames.
     filename_queue = tf.train.string_input_producer([para.filename], num_epochs=None)
+    
+    if self.is_train():
+      file_list_path = 'MLDS_hw2_data/training_data/Training_Data_TFR/training_list.txt'
+      filenames = open(file_list_path).read().splitlines()
+      filename_queue = tf.train.string_input_producer([filenames], shuffle=True)
+    else:
+      file_list_path = 'MLDS_hw2_data/testing_data/Testing_Data_TFR/testing_list.txt'
+      filenames = open(file_list_path).read().splitlines()
+      filename_queue = tf.train.string_input_producer([filenames], shuffle=False)
+
     reader = tf.TFRecordReader()
     _, serialized_example = reader.read(filename_queue)
 
@@ -279,7 +289,7 @@ if __name__ == '__main__':
     help='type of optimizer (default:%d)' %default_optimizer_type)
   argparser.add_argument('-is', '--init_scale',
     type=int, default=default_init_scale,
-    help='initialization scale for tensorflow initializer (default:%d', %default_init_scale)
+    help='initialization scale for tensorflow initializer (default:%d)' %default_init_scale)
   argparser.add_argument('-me', '--max_epoch',
     type=int, default=default_max_epoch,
     help='maximum training epoch (default:%d' %default_max_epoch)
@@ -337,10 +347,6 @@ if __name__ == '__main__':
   with open('./jason/output.json', 'w') as f:
     json.dump(output, f)
   os.system('python3 bleu_eval.py ./jason/output.json MLDS_hw2_data/testing_public_label.json')
-
-
-
-
 
 
 
