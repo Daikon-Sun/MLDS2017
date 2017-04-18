@@ -148,7 +148,7 @@ class S2VT(object):
     with tf.variable_scope('building_model', reuse=True) as scope:
       if self.is_train():
         for i in range(0, para.max_caption_length):
-          
+
           current_caption_embed = tf.nn.embedding_lookup(word_embedding_w, target_captions_input[:,i])
 
           with tf.variable_scope("layer_1"):
@@ -250,7 +250,7 @@ def run_epoch(sess, model, args):
   if not model.is_test():
     fetches['cost'] = model.cost
     if model.is_train():
-      fetches['evel'] = model.eval
+      fetches['eval'] = model.eval
     vals = sess.run(fetches)
     return np.exp(vals['cost'])
   else:
@@ -351,8 +351,10 @@ if __name__ == '__main__':
         test_args.batch_size = 1
         test_model = S2VT(para=test_args)
 
+    config = tf.ConfigProto()
+    config.gpu_options.per_process_gpu_memory_fraction = 0.4
     sv = tf.train.Supervisor(logdir='jason/logs/')
-    with sv.managed_session() as sess:
+    with sv.managed_session(config=config) as sess:
       # training
       for i in range(1, args.max_epoch + 1):
         train_perplexity = run_epoch(sess, train_model, train_args)
