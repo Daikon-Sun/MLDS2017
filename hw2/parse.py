@@ -36,6 +36,7 @@ if __name__ == '__main__':
       action='store_true')
   args = argparser.parse_args()
 
+  # convert only testing data if args.convert == true
   if args.convert:
     sys.stderr.write('start converting testing data into TFR format...\n')
     with open(args.testing_id) as testing_id:
@@ -66,6 +67,9 @@ if __name__ == '__main__':
   vocab_table['<UNK>'] = UNK
   index = 4
 
+  # define maximum length of caption
+  max_caption_length = 20
+
   with open(args.training_label) as training_label_json:
     training_label = json.load(training_label_json)
 
@@ -91,15 +95,25 @@ if __name__ == '__main__':
         words = word_tokenize(training_label[i]["caption"][j].lower())
         words_id = []
         words_id.append(BOS)
+        counter = 1
         for w in words:
           words_id.append(UNK if w not in vocab_table else vocab_table[w])
+          counter += 1
+          if counter >= max_caption_length - 1:
+            break
         words_id.append(EOS)
+        caption_length = counter
+        while counter < max_caption_length:
+          words_id.append(PAD)
+          counter += 1
         example = tf.train.Example(
           features=tf.train.Features(
             feature={
               'video': tf.train.Feature(
                 float_list=tf.train.FloatList(value=video_array_flat)),
               'caption': tf.train.Feature(
-                int64_list=tf.train.Int64List(value=words_id))}))
+                int64_list=tf.train.Int64List(value=words_id)),
+              'caption_length': tf.train.Feature(
+                int64_list=tf.train.Int64List(value=[caption_length]))}))
         serialized = example.SerializeToString()
         writer.write(serialized)

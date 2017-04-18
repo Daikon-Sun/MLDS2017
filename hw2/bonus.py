@@ -17,7 +17,7 @@ default_vocab_size            = 6089
 default_max_caption_length    = 20
 default_embedding_dimension   = 500  # embedding dimension for video and vocab
 default_hidden_units          = 1000 # according to paper
-default_batch_size            = 10
+default_batch_size            = 145
 default_layer_number          = 1
 default_max_gradient_norm     = 10
 default_dropout_keep_prob     = 0.5    # for dropout layer
@@ -25,7 +25,7 @@ default_init_scale            = 0.005  # for tensorflow initializer
 default_max_epoch             = 10000
 default_info_epoch            = 1
 default_testing_video_num     = 50     # number of testing videos
-default_learning_rate         = 0.0001
+default_learning_rate         = 0.0000001
 default_learning_rate_decay_factor = 1
 
 
@@ -60,9 +60,9 @@ class S2VT(object):
       if para.rnn_cell_type == 0:
         return tf.contrib.rnn.BasicRNNCell(para.hidden_units, activation=tf.tanh)
       elif para.rnn_cell_type == 1:
-        return tf.contrib.rnn.BasicLSTMCell(para.hidden_units, state_is_tuple=False)
+        return tf.contrib.rnn.BasicLSTMCell(para.hidden_units, state_is_tuple=True)
       elif para.rnn_cell_type == 2:
-        return tf.contrib.rnn.LSTMCell(para.hidden_units, use_peepholes=True, state_is_tuple=False)
+        return tf.contrib.rnn.LSTMCell(para.hidden_units, use_peepholes=True, state_is_tuple=True)
       elif para.rnn_cell_type == 3:
         return tf.contrib.rnn.GRUCell(para.hidden_units)
 
@@ -91,7 +91,8 @@ class S2VT(object):
       videos, captions, video_lens, caption_lens = tf.train.batch([video, caption, video_len, caption_len],
         batch_size=para.batch_size, dynamic_pad=True)
       # sparse tensor cannot be sliced
-      caption_lens = tf.to_int64(caption_lens)
+      caption_lens = tf.reshape(caption_lens, [-1]) # reshape to 1D
+      caption_mask = tf.sequence_mask(caption_lens, para.max_caption_length, dtype=tf.float32)
       target_captions = tf.sparse_tensor_to_dense(captions)
       target_captions_input  = target_captions[:,  :-1] # start from <BOS>
       target_captions_output = target_captions[:, 1:  ] # end by <EOS>
@@ -126,8 +127,13 @@ class S2VT(object):
       embed_video_inputs = tf.nn.dropout(embed_video_inputs, para.dropout_keep_prob)
 
     # Initial state of the LSTM memory.
-    state_1 = tf.zeros([para.batch_size, layer_1_cell.state_size])
-    state_2 = tf.zeros([para.batch_size, layer_2_cell.state_size])
+    with tf.variable_scope('building_model') as scope:
+      with tf.variable_scope("layer_1"):
+        state_1 = layer_1_cell.zero_state(para.batch_size, dtype=tf.float32)
+      with tf.variable_scope("layer_2"):
+        state_2 = layer_2_cell.zero_state(para.batch_size, dtype=tf.float32)
+    #state_1 = tf.zeros([para.batch_size, layer_1_cell.state_size])
+    #state_2 = tf.zeros([para.batch_size, layer_2_cell.state_size])
     cost = tf.constant(0.0)
 
     # paddings for 1st and 2nd layers
@@ -166,6 +172,7 @@ class S2VT(object):
           self._prob = layer_2_output_logit
 
           cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=layer_2_output_logit, labels=one_hot)
+          cross_entropy = cross_entropy * caption_mask[:,i]
 
           cost += tf.reduce_mean(cross_entropy)
       else:
@@ -231,11 +238,13 @@ class S2VT(object):
         serialized_example,
         features={
           'video': tf.FixedLenFeature([para.video_frame_num*para.video_dimension], tf.float32),
-          'caption': tf.VarLenFeature(tf.int64)
+          'caption': tf.VarLenFeature(tf.int64),
+          'caption_length': tf.FixedLenFeature([1], tf.int64)
         })
       video = tf.reshape(features['video'], [para.video_frame_num, para.video_dimension])
       caption = features['caption']
-      return video, caption, tf.shape(video)[0], tf.shape(caption)[0]
+      caption_length = features['caption_length']
+      return video, caption, tf.shape(video)[0], caption_length
     else:
       features = tf.parse_single_example(
         serialized_example,
@@ -352,7 +361,7 @@ if __name__ == '__main__':
         test_model = S2VT(para=test_args)
 
     config = tf.ConfigProto()
-    config.gpu_options.per_process_gpu_memory_fraction = 0.4
+    config.gpu_options.per_process_gpu_memory_fraction = 1.0
     sv = tf.train.Supervisor(logdir='jason/logs/')
     with sv.managed_session(config=config) as sess:
       # training
