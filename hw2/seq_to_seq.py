@@ -5,6 +5,8 @@ from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.rnn import LSTMStateTuple
+from tensorflow.contrib.seq2seq.python.ops.attention_decoder_fn \
+    import _init_attention
 import tensorflow.contrib.seq2seq as seq2seq
 from tensorflow.contrib.seq2seq import sequence_loss as sequence_loss
 from tensorflow.contrib.layers import legacy_fully_connected as fully_connected
@@ -59,6 +61,8 @@ class S2S(object):
       videos, v_lens =\
           tf.train.batch([video, v_len],
                          batch_size=para.batch_size, dynamic_pad=True)
+    self._val1 = videos
+
     v_lens = tf.to_int32(v_lens)
     with tf.variable_scope('embedding'):
       W_E = tf.get_variable('W_E', [para.vocab_size, para.embed_dim],
@@ -134,30 +138,39 @@ class S2S(object):
     else:
       global_step = tf.contrib.framework.get_or_create_global_step()
 
-      if para.attention:
-        decoder_fn_train = seq2seq.attention_decoder_fn_train(
-            encoder_state=encoder_states,
-            attention_keys=at_keys,
-            attention_values=at_vals,
-            attention_score_fn=at_score,
-            attention_construct_fn=at_cons)
-      else:
-        def decoder_fn_train(time, cell_state, cell_input,
-                             cell_output, context):
-          if para.scheduled_sampling:
-            if cell_output is None: nxt_cell_input = cell_input
-            else:
-              epsilon = tf.cast(1-global_step/1000, tf.float32)
-              nxt_cell_input =\
-                tf.cond(tf.less(tf.random_uniform([1]), epsilon)[0],
-                        lambda: cell_input,
-                        lambda: tf.gather(W_E, tf.argmax(
-                                          output_fn(cell_output), 1)))
-          else:
-            nxt_cell_input = cell_input
-          if cell_state is None: #first time
-            return None, encoder_states, nxt_cell_input, cell_output, context
-          else: return None, cell_state, nxt_cell_input, cell_output, context
+      def decoder_fn_train(time, cell_state, cell_input,
+                           cell_output, context):
+        if para.scheduled_sampling and cell_output is not None:
+          epsilon = tf.cast(1-(global_step//10)/400, tf.float32)
+          cell_input = tf.cond(tf.less(tf.random_uniform([1]), epsilon)[0],
+                               lambda: cell_input,
+                               lambda: tf.gather(W_E, tf.argmax(
+                                                 output_fn(cell_output), 1)))
+        if cell_state is None:
+          cell_state = encoder_states
+          if para.attention: attention = _init_attention(encoder_states)
+        else:
+          if para.attention:
+            cell_output = attention = at_cons(cell_output, at_keys, at_vals)
+        if para.attention:
+          nxt_cell_input = tf.concat([cell_input, attention], 1)
+        else: nxt_cell_input = cell_input
+        return None, encoder_states, nxt_cell_input, cell_output, context
+      #def decoder_fn_train(time, cell_state, cell_input,
+      #                     cell_output, context):
+
+      #  if para.scheduled_sampling and cell_output is not None:
+      #    epsilon = tf.cast(1-(global_step//10)/400, tf.float32)
+      #    nxt_cell_input =\
+      #      tf.cond(tf.less(tf.random_uniform([1]), epsilon)[0],
+      #              lambda: cell_input,
+      #              lambda: tf.gather(W_E, tf.argmax(
+      #                                output_fn(cell_output), 1)))
+      #  else: nxt_cell_input = cell_input
+
+      #  if cell_state is None: #first time
+      #    return None, encoder_states, nxt_cell_input, cell_output, context
+      #  else: return None, cell_state, nxt_cell_input, cell_output, context
 
       with tf.variable_scope('decode', reuse=None):
         (decoder_outputs, _, _) =\
@@ -196,13 +209,8 @@ class S2S(object):
   def get_single_example(self, para):
     '''get one example from TFRecorder file using tf default queue runner'''
     if self.is_test():
-      #filelist = open('testing_list.txt', 'r').read().splitlines()
-      #filenames = [ 'test_tfrdata/'+fl+'.tfr' for fl in filelist ]
-      filelist = open('training_list.txt', 'r').read().splitlines()
-      filenames = [ 'train_tfrdata/'+fl+'.tfr' for fl in filelist ]
-      filenames = filenames[:para.train_num]
-      #filelist = open('time_limited_list.txt', 'r').read().splitlines()
-      #filenames = [ 'time_limited_tfrdata/'+fl+'.tfr' for fl in filelist ]
+      filelist = open('testing_list.txt', 'r').read().splitlines()
+      filenames = [ 'test_tfrdata/'+fl+'.tfr' for fl in filelist ]
       f_queue = tf.train.string_input_producer(filenames, shuffle=False)
     else:
       filelist = open('training_list.txt', 'r').read().splitlines()
@@ -219,7 +227,7 @@ class S2S(object):
       feature = tf.parse_single_example(serialized_example, features={
         'video': tf.FixedLenFeature([para.video_len*para.video_dim],
                                     tf.float32)})
-      video = tf.reshape(feature['video'], [-1, para.video_dim])[0:80:10]
+      video = tf.reshape(feature['video'], [-1, para.video_dim])[::5]
       return video, tf.shape(video)[0]
     else:
       feature = tf.parse_single_example(serialized_example,
@@ -227,7 +235,7 @@ class S2S(object):
             'video': tf.FixedLenFeature([para.video_len*para.video_dim],
                                         tf.float32),
             'caption': tf.VarLenFeature(tf.int64)})
-      video = tf.reshape(feature['video'], [-1, para.video_dim])[0:80:10]
+      video = tf.reshape(feature['video'], [-1, para.video_dim])[::5]
       caption = feature['caption']
       return video, caption, tf.shape(video)[0], tf.shape(caption)[0]-1
 
@@ -239,19 +247,17 @@ class S2S(object):
   def prob(self): return self._prob
   @property
   def val1(self): return self._val1
-  @property
-  def val2(self): return self._val2
+  #@property
+  #def val2(self): return self._val2
 
 def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
   fetches = {}
   if not model.is_test():
     fetches['cost'] = model.cost
-    fetches['val1'] = model.val1
     if model.is_train():
       fetches['eval'] = model.eval
     vals = sess.run(fetches)
-    print(vals['val1'])
     return np.exp(vals['cost'])
 
   else:
@@ -274,6 +280,7 @@ if __name__ == '__main__':
 
   #default values (in alphabetic order)
   default_batch_size = 145
+  default_beam_size = 1
   default_data_dir = './train_tfrdata/'
   default_embed_dim = 512
   default_hidden_size = 256
@@ -323,7 +330,7 @@ if __name__ == '__main__':
                       type=int, default=default_layer_num,
                       nargs='?', help='Number of rnn layer. (default:%d)'
                       %default_layer_num)
-  parser.add_argument('--info_epoch',
+  parser.add_argument('-ie', '--info_epoch',
                       type=int, default=default_info_epoch,
                       nargs='?', help='Print information every info_epoch.'
                       '(default:%d)'%default_info_epoch)
@@ -388,6 +395,9 @@ if __name__ == '__main__':
                       help='add attention', action='store_true')
   parser.add_argument('-ss', '--scheduled_sampling',
                       help='add scheduled sampling', action='store_true')
+  parser.add_argument('-b', '--beam_search', type=int,
+                      default=default_beam_size, nargs='?',
+                      help='Size of beam search.(default:%d)'%default_beam_size)
   #parser.add_argument('-dd', '--data_dir',
   #                    type=str, default=default_data_dir, nargs='?',
   #                    help='Directory where the data are placed.'
@@ -399,8 +409,7 @@ if __name__ == '__main__':
   args = parser.parse_args()
 
   #calculate real epochs
-  print('training with about %.3f epochs!'
-        %((args.batch_size*args.max_epoch)/1450))
+  print('training with %.3f epochs!'%((args.batch_size*args.max_epoch)/1450))
 
   dct_file = 'train_tfrdata/vocab.txt'
   if tf.gfile.Exists(dct_file):
@@ -414,9 +423,10 @@ if __name__ == '__main__':
       sents = [ sent for caption in captions for sent in caption ]
       vocabs = set([ word for sent in sents for word in sent ])
       vocabs = ['<pad>', '<unk>', '<bos>', '<eos>'] + list(vocabs)
-      dct = dict([(word, i) for i, word in enumerate(vocabs)])
+      dct = dict([(i, word) for i, word in enumerate(vocabs)])
+      word_to_id = dict([(word, i) for i, word in enumerate(vocabs)])
     with open('train_tfrdata/vocab.txt', 'w') as f:
-      for word in dct.keys():
+      for word in dct.values():
         f.write(word+'\n')
   args.vocab_size = len(dct)
   print('vocab_size = %d'%args.vocab_size)
@@ -429,9 +439,10 @@ if __name__ == '__main__':
       if not tf.gfile.Exists(out_name):
         video = np.load('MLDS_hw2_data/training_data/feat/'+label['id']+'.npy')
         video = video.reshape((-1, 1))
-        max_i = np.argmax([len(caption) for caption in captions[i]])
+        #m_i = np.argmin([len(caption) for caption in captions[i]])
+        m_i = len(captions[i])//2
         writer = tf.python_io.TFRecordWriter(out_name)
-        word_ids = [ dct[word] for word in captions[i][max_i] ]
+        word_ids = [ word_to_id[word] for word in captions[i][m_i] ]
         word_ids = [2] + word_ids + [3]
         example = tf.train.Example(
           features=tf.train.Features(
@@ -466,8 +477,10 @@ if __name__ == '__main__':
         test_args.batch_size = 1
         test_model = S2S(para=test_args)
 
+    config = tf.ConfigProto()
+    config.gpu_options.per_process_gpu_memory_fraction = 0.5
     sv = tf.train.Supervisor(logdir='./logs/')
-    with sv.managed_session() as sess:
+    with sv.managed_session(config=config) as sess:
 
       for i in range(1, args.max_epoch+1):
         train_perplexity = run_epoch(sess, train_model, train_args)

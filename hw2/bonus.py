@@ -17,7 +17,11 @@ default_vocab_size            = 6089
 default_max_caption_length    = 20
 default_embedding_dimension   = 500  # embedding dimension for video and vocab
 default_hidden_units          = 1000 # according to paper
+<<<<<<< HEAD
 default_batch_size            = 145
+=======
+default_batch_size            = 29
+>>>>>>> updates
 default_layer_number          = 1
 default_max_gradient_norm     = 10
 default_dropout_keep_prob     = 0.5    # for dropout layer
