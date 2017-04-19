@@ -162,7 +162,7 @@ class S2VT(object):
     layer_1_inputs = tf.concat([embed_video_inputs, layer_1_padding], 1)
     layer_1_inputs_ta = tf.TensorArray(dtype=tf.float32,
                                        size=para.video_frame_num+para.max_caption_length)
-    layer_1_inputs_ta = layer_1_inputs_ta.unstack(layer_1_inputs, axis=1)
+    layer_1_inputs_ta = tf.unstack(layer_1_inputs, axis=1)
 
     def layer_1_loop_fn(time, cell_output, cell_state, loop_state):
       emit_output = cell_output
@@ -175,13 +175,13 @@ class S2VT(object):
       finished = tf.reduce_all(is_finished)
       next_input = tf.cond(
         finished,
-        lambda: tf.zeors([para.batch_size, para.embedding_dimension], dtype=tf.float32)
+        lambda: tf.zeors([para.batch_size, para.embedding_dimension], dtype=tf.float32),
         lambda: layer_1_inputs_ta.read(time))
       next_loop_state = None
       return (all_finished, next_input, next_cell_state,
               emit_output, next_loop_state)
     
-    layer_1_outputs_ta, layer_1_final_state, _ = raw_rnn(layer_1_cell, layer_1_loop_fn)
+    layer_1_outputs_ta, layer_1_final_state, _ = tf.nn.raw_rnn(layer_1_cell, layer_1_loop_fn)
     #layer_1_outputs = layer_1_outputs_ta.stack() # may not be time-major here
     #layer_1_outputs = tf.reshape(layer_1_outputs,
     #                    [para.batch_size,para.video_frame_num+para.max_caption_length, para.hidden_units])
@@ -206,7 +206,7 @@ class S2VT(object):
         finished = tf.reduce_all(is_finished)
         next_input = tf.cond(
           finished,
-          lambda: tf.zeors([para.batch_size, para.embedding_dimension+para.hidden_units], dtype=tf.float32)
+          lambda: tf.zeors([para.batch_size, para.embedding_dimension+para.hidden_units], dtype=tf.float32),
           lambda: layer_2_inputs_ta.read(time))
         next_loop_state = None
         return (all_finished, next_input, next_cell_state,
@@ -231,13 +231,13 @@ class S2VT(object):
         finished = tf.reduce_all(start_decoding)
         next_input = tf.cond(
           start_decoding,
-          lambda: get_next_input
+          lambda: get_next_input,
           lambda: layer_2_inputs_ta.read(time))
         next_loop_state = None
         return (all_finished, next_input, next_cell_state,
                 emit_output, next_loop_state)
 
-    layer_2_outputs_ta, layer_2_final_state, _ = raw_rnn(layer_2_cell, layer_2_loop_fn)
+    layer_2_outputs_ta, layer_2_final_state, _ = tf.nn.raw_rnn(layer_2_cell, layer_2_loop_fn)
     layer_2_outputs = tf.stack(layer_2_outputs_ta) # may not be time-major here
 
     if self.is_train():
