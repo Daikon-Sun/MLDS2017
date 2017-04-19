@@ -257,19 +257,10 @@ class S2VT(object):
       optimizer  = default_optimizers[para.optimizer_type](para.learning_rate)
       self._eval = optimizer.apply_gradients(zip(grads, tvars),
                      global_step=tf.contrib.framework.get_or_create_global_step())
-    else: ################### TODO #######################
-        self._result = []
-        for i in range(0, para.max_caption_length):
-          
-          layer_2_output_logit = tf.matmul(layer_2_output, word_decoding_w)
-          max_prob_index = tf.argmax(layer_2_output_logit, 1)[0]
-          self._result.append(max_prob_index)
-          if max_prob_index == EOS:
-            break
-          else:
-            current_caption_embed = tf.nn.embedding_lookup(word_embedding_w, max_prob_index)
-            current_caption_embed = tf.expand_dims(current_caption_embed, 0)
-      
+    else:
+      layer_2_output_logit = tf.matmul(layer_2_outputs, word_decoding_w)
+      max_prob_index = tf.argmax(layer_2_output_logit, 1)[0]
+      self._result = max_prob_index
 
   # ======================== end of __init__ ======================== #
 
