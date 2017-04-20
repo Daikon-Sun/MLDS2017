@@ -78,18 +78,12 @@ class S2VT(object):
         return single_cell()
 
     # multi-layer within a layer
-    if para.layer_number > 1:
-      with tf.variable_scope('layer_1'):
-        layer_1_cell = tf.contrib.rnn.MultiRNNCell(
-          [rnn_cell() for _ in range(para.layer_number)], state_is_tuple=True)
-      with tf.variable_scope('layer_2'):
-        layer_2_cell = tf.contrib.rnn.MultiRNNCell(
-          [rnn_cell() for _ in range(para.layer_number)], state_is_tuple=True)
-    else:
-      with tf.variable_scope('layer_1'):
-        layer_1_cell = rnn_cell()
-      with tf.variable_scope('layer_2'):
-        layer_2_cell = rnn_cell()
+    with tf.variable_scope('layer_1'):
+      layer_1_cell = tf.contrib.rnn.MultiRNNCell(
+        [rnn_cell() for _ in range(para.layer_number)])
+    with tf.variable_scope('layer_2'):
+      layer_2_cell = tf.contrib.rnn.MultiRNNCell(
+        [rnn_cell() for _ in range(para.layer_number)])
 
     # get data in batches
     if self.is_train():
@@ -155,26 +149,11 @@ class S2VT(object):
       sequence_length = tf.add(video_frame_num, caption_lens)
     else:
       sequence_length = tf.add(video_frame_num, max_caption_length)
-    
+
     total_length = tf.add(video_frame_num, max_caption_length)
 
     # reshape for rnn
     sequence_length = tf.reshape(sequence_length, [-1])
-    #video_frame_num = tf.reshape(video_frame_num, [-1])
-    #total_length = tf.reshape(total_length, [-1])
-
-
-    # preparing inputs
-    #layer_1_inputs = tf.placeholder(shape=(para.batch_size,
-    #                                       para.video_frame_num+para.max_caption_length,
-    #                                       para.embedding_dimension),
-    #                                dtype=tf.float32)
-    #layer_2_inputs = tf.placeholder(shape=(para.batch_size,
-    #                                       para.video_frame_num+para.max_caption_length,
-    #                                       para.embedding_dimension+para.hidden_units),
-    #                                dtype=tf.float32)
-    #sequence_length = tf.placeholder(shape=(para.batch_size,), dtype=tf.int64)
-
 
     # =================== layer 1 ===================
     layer_1_inputs = tf.concat([embed_video_inputs, layer_1_padding], 1)
@@ -186,36 +165,8 @@ class S2VT(object):
       layer_1_outputs_ta, layer_1_final_state = tf.nn.dynamic_rnn(layer_1_cell,
                                                   layer_1_inputs,
                                                   sequence_length=sequence_length,
-                                                  time_major=False,
                                                   dtype=tf.float32)
 
-    ''' try dynamic_rnn instead
-    def layer_1_loop_fn(time, cell_output, cell_state, loop_state):
-      emit_output = cell_output
-      if cell_output is None: # time == 0
-        next_cell_state = layer_1_cell.zero_state(para.batch_size, dtype=tf.float32)
-      else:
-        next_cell_state = cell_state
-      #all_finished = (time >= total_length)
-      is_finished = (time >= sequence_length)
-      finished = tf.reduce_all(is_finished)
-      next_input = tf.cond(
-        finished,
-        lambda: tf.zeros([para.batch_size, para.embedding_dimension], dtype=tf.float32),
-        lambda: layer_1_inputs_ta.read(time))
-      next_loop_state = None
-      return (is_finished, next_input, next_cell_state,
-              emit_output, next_loop_state)
-    
-    layer_1_outputs_ta, layer_1_final_state, _ = tf.nn.raw_rnn(layer_1_cell, layer_1_loop_fn)
-    '''
-
-    #layer_1_outputs = layer_1_outputs_ta.stack() # may not be time-major here
-    #layer_1_outputs = tf.reshape(layer_1_outputs,
-    #                    [para.batch_size,para.video_frame_num+para.max_caption_length, para.hidden_units])
-
-
-    # =================== layer 2 ===================
     if self.is_train():
       caption_embed = tf.nn.embedding_lookup(word_embedding_w, target_captions_input)
       layer_2_pad_and_embed = tf.concat([layer_2_padding, caption_embed], 1)
@@ -239,20 +190,27 @@ class S2VT(object):
           finished,
           lambda: tf.zeros([para.batch_size, para.embedding_dimension+para.hidden_units], dtype=tf.float32),
           lambda: layer_2_inputs_ta.read(time))
-        next_loop_state = None
-        return (is_finished, next_input, next_cell_state,
-                emit_output, next_loop_state)
+        return (is_finished, next_input, next_cell_state, emit_output, loop_state)
     else:
       def layer_2_loop_fn(time, cell_output, cell_state, loop_state):
 
-        def get_next_input():
+        def encode_input():
+          return tf.zeros([para.batch_size, para.embedding_dimension+para.hidden_units], dtype=tf.float32)
+          layer_2_inputs = layer_2_inputs_ta.read(time)
+          padding = tf.zeros([para.batch_size, para.embedding_dimension], dtype=tf.float32)
+          return tf.concat([padding, layer_4_inputs], 1)
+
+        def decode_input():
+          return tf.zeros([para.batch_size, para.embedding_dimension+para.hidden_units], dtype=tf.float32)
           if cell_output is None:
             return tf.zeros([para.batch_size, para.embedding_dimension+para.hidden_units], dtype=tf.float32)
           else:
             output_logit = tf.matmul(cell_output, word_decoding_w)
-            prediction = tf.argmax(output_logits, axis=1)
+            prediction = tf.argmax(output_logit, axis=1)
+            print(prediction)
             prediction_embed = tf.nn.embedding_lookup(word_embedding_w, prediction)
-            next_input = tf.concat(prediction_embed, layer_1_outputs_ta.read(time))
+            next_input = tf.concat([prediction_embed, layer_2_inputs_ta.read(time)], 1)
+            print(next_input)
             return next_input
 
         emit_output = cell_output
@@ -260,25 +218,24 @@ class S2VT(object):
           next_cell_state = layer_2_cell.zero_state(para.batch_size, dtype=tf.float32)
         else:
           next_cell_state = cell_state
-        all_finished = (time >= total_length)
+        all_finished = (time >= total_length)[0]
         start_decoding = (time >= video_frame_num)
         start_decoding = tf.reduce_all(start_decoding)
-        next_input = tf.cond(
-          start_decoding,
-          lambda: get_next_input(),
-          lambda: layer_2_inputs_ta.read(time))
-        next_loop_state = None
-        return (all_finished, next_input, next_cell_state,
-                emit_output, next_loop_state)
-    with tf.variable_scope('layer_2'):
-      layer_2_outputs_ta, layer_2_final_state, _ = tf.nn.raw_rnn(layer_2_cell, layer_2_loop_fn)
+        next_input = tf.cond(start_decoding, decode_input, encode_input)
+
+        return (all_finished, next_input, next_cell_state, emit_output, loop_state)
+
+    layer_2_outputs_ta, layer_2_final_state, _ = tf.nn.raw_rnn(layer_2_cell, layer_2_loop_fn)
     layer_2_outputs = layer_2_outputs_ta.stack() # may not be time-major here
+    self._val1 = layer_2_outputs
+    return
 
     if self.is_train():
       layer_2_outputs = tf.reshape(layer_2_outputs, [-1, para.hidden_units])
       layer_2_output_logit = tf.matmul(layer_2_outputs, word_decoding_w)
+      print(layer_2_output_logit)
       layer_2_output_logit = tf.reshape(layer_2_output_logit,
-                               [para.batch_size, para.video_frame_num+para.max_caption_length, para.vocab_size])
+                               [para.batch_size, para.video_frame_num+para.max_caption_length-1, para.vocab_size])
       layer_2_output_logit = layer_2_output_logit[:, para.video_frame_num:, :]
       self._prob = tf.nn.softmax(layer_2_output_logit)
 
@@ -293,6 +250,7 @@ class S2VT(object):
       self._eval = optimizer.apply_gradients(zip(grads, tvars),
                      global_step=tf.contrib.framework.get_or_create_global_step())
     else:
+      layer_2_outputs = tf.reshape(layer_2_outputs, [-1, para.hidden_units])
       layer_2_output_logit = tf.matmul(layer_2_outputs, word_decoding_w)
       max_prob_index = tf.argmax(layer_2_output_logit, 1)[0]
       self._result = max_prob_index
@@ -310,7 +268,9 @@ class S2VT(object):
   @property
   def prob(self): return self._prob
   @property
-  def val(self):  return self._val
+  def val1(self):  return self._val1
+  @property
+  def val2(self):  return self._val2
 
   def get_single_example(self, para):
     if self.is_train():
@@ -351,15 +311,21 @@ class S2VT(object):
 def run_epoch(sess, model, args):
   fetches = {}
   if not model.is_test():
-    fetches['cost'] = model.cost
-    if model.is_train():
-      fetches['eval'] = model.eval
+    fetches['val1'] = model.val1
+    #fetches['cost'] = model.cost
+    #if model.is_train():
+    #  fetches['eval'] = model.eval
     vals = sess.run(fetches)
+    print(vals['val1'].shape)
+    return 0
     return np.exp(vals['cost'])
   else:
-    fetches['prob'] = model.prob
+    fetches['val1'] = model.val1
+    print(vals['val1'].shape)
+    return 0
+    #fetches['prob'] = model.prob
     vals = sess.run(fetches)
-    prob = vals['prob']
+    #prob = vals['prob']
     bests = []
     for i in range(prob.shape[0]):
       ans = []
@@ -456,7 +422,7 @@ if __name__ == '__main__':
 
     config = tf.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 1.0
-    sv = tf.train.Supervisor(logdir='jason/logs/')
+    sv = tf.train.Supervisor(logdir='logs/')
     with sv.managed_session(config=config) as sess:
       # training
       for i in range(1, args.max_epoch + 1):

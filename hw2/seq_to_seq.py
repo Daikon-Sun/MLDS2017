@@ -25,7 +25,7 @@ class S2S(object):
         return tf.contrib.rnn.BasicLSTMCell(para.hidden_size * fac)
     elif para.rnn_type == 2:#full LSTM
       def unit_cell(fac):
-        return tf.contrib.rnn.LSTMCell(para.hidden_size * fac, use_peepholes=True)
+        return tf.contrib.rnn.LSTMCell(para.hidden_size*fac, use_peepholes=True)
     elif para.rnn_type == 3:#GRU
       def unit_cell(fac):
         return tf.contrib.rnn.GRUCell(para.hidden_size * fac)
