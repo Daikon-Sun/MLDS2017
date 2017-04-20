@@ -68,7 +68,7 @@ if __name__ == '__main__':
   index = 4
 
   # define maximum length of caption
-  max_caption_length = 20
+  #max_caption_length = 20
 
   with open(args.training_label) as training_label_json:
     training_label = json.load(training_label_json)
@@ -99,13 +99,14 @@ if __name__ == '__main__':
         for w in words:
           words_id.append(UNK if w not in vocab_table else vocab_table[w])
           counter += 1
-          if counter >= max_caption_length - 1:
-            break
+          #if counter >= max_caption_length - 1:
+          #  break
         words_id.append(EOS)
+        counter += 1
         caption_length = counter
-        while counter < max_caption_length:
-          words_id.append(PAD)
-          counter += 1
+        #while counter < max_caption_length:
+        #  words_id.append(PAD)
+        #  counter += 1
         example = tf.train.Example(
           features=tf.train.Features(
             feature={
