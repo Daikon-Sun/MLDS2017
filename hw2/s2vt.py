@@ -249,8 +249,8 @@ class S2VT(object):
     else:
       layer_2_outputs = tf.reshape(layer_2_outputs, [-1, para.hidden_units])
       layer_2_output_logit = tf.matmul(layer_2_outputs, word_decoding_w)
-      layer_2_output_logit = tf.reshape(layer_2_output_logit, [para.batch_size, -1])
-      max_prob_index = tf.argmax(layer_2_output_logit, 1)
+      layer_2_output_logit = tf.reshape(layer_2_output_logit, [-1, para.batch_size, para.vocab_size])
+      max_prob_index = tf.argmax(layer_2_output_logit, 2)
       self._prob = max_prob_index
 
   # ======================== end of __init__ ======================== #
@@ -318,10 +318,9 @@ def run_epoch(sess, model, args):
     prob = vals['prob']
     ans = []
     for i in range(prob.shape[0]):
-      max_id = np.argmax(prob[i])
-      if max_id == EOS:
+      ans.extend(vocab_dictionary[str(prob[i,0])])
+      if prob[i,0] == EOS:
         break
-      ans.append(vocab_dictionary[max_id])
     return ans
 
 if __name__ == '__main__':
@@ -417,12 +416,12 @@ if __name__ == '__main__':
       # testing
       results = []
       for i in range(default_testing_video_num):
-        results.extend(run_epoch(sess, test_model, test_args))
+        results.append(run_epoch(sess, test_model, test_args))
       print(results)
 
     # compute BLEU score
     filenames = open('MLDS_hw2_data/testing_id.txt', 'r').read().splitlines()
     output = [{"caption": result, "id": filename}
               for result, filename in zip(results, filenames)]
-    with open('jason/output.json', 'w') as f:
+    with open('jason_output.json', 'w') as f:
       json.dump(output, f)
