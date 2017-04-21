@@ -156,21 +156,6 @@ class S2S(object):
           nxt_cell_input = tf.concat([cell_input, attention], 1)
         else: nxt_cell_input = cell_input
         return None, encoder_states, nxt_cell_input, cell_output, context
-      #def decoder_fn_train(time, cell_state, cell_input,
-      #                     cell_output, context):
-
-      #  if para.scheduled_sampling and cell_output is not None:
-      #    epsilon = tf.cast(1-(global_step//10)/400, tf.float32)
-      #    nxt_cell_input =\
-      #      tf.cond(tf.less(tf.random_uniform([1]), epsilon)[0],
-      #              lambda: cell_input,
-      #              lambda: tf.gather(W_E, tf.argmax(
-      #                                output_fn(cell_output), 1)))
-      #  else: nxt_cell_input = cell_input
-
-      #  if cell_state is None: #first time
-      #    return None, encoder_states, nxt_cell_input, cell_output, context
-      #  else: return None, cell_state, nxt_cell_input, cell_output, context
 
       with tf.variable_scope('decode', reuse=None):
         (decoder_outputs, _, _) =\
@@ -281,24 +266,25 @@ if __name__ == '__main__':
   #default values (in alphabetic order)
   default_batch_size = 145
   default_beam_size = 1
-  default_data_dir = './train_tfrdata/'
   default_embed_dim = 512
   default_hidden_size = 256
+  default_inference_list = 'inference_list.txt'
   default_info_epoch = 1
   default_init_scale = 0.005
   default_keep_prob = 0.7
   default_layer_num = 2
   default_learning_rate = 0.001
   default_rnn_type = 2
+  default_train_list = 'train_list.txt'
   default_max_grad_norm = 5
   default_max_epoch = 10000
   default_num_sampled = 2000
   default_optimizer = 4
-  default_output_filename = './output.json'
+  default_output_filename = 'output.json'
   #default_softmax_loss = 0
   default_video_dim = 4096
-  default_video_len = 80
   default_train_num = 1450
+  default_video_step = 5
   #default_wordvec_src = 3
   optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,
                 tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,
@@ -318,10 +304,10 @@ if __name__ == '__main__':
                       type=int, default=default_embed_dim,
                       nargs='?', help='Embedding dimension of vocabularies. '
                       '(default:%d)'%default_embed_dim)
-  parser.add_argument('-vl', '--video_len',
-                      type=int, default=default_video_len,
-                      nargs='?', help='Number of a frame in a video. '
-                      '(default:%d)'%default_video_len)
+  parser.add_argument('-vl', '--video_step',
+                      type=int, default=default_video_step,
+                      nargs='?', help='Choose a frame per step. (default:%d)'
+                      %default_video_step)
   parser.add_argument('-vd', '--video_dim',
                       type=int, default=default_video_dim,
                       nargs='?', help='Dimension of a frame from a video. '
@@ -350,9 +336,9 @@ if __name__ == '__main__':
   #                    nargs='?', choices=range(0, 3), help='Type of softmax'
   #                    'function --> [0:full softmax], [1:sampled softmax],'
   #                    '[nce loss]. (default:%d)'%default_softmax_loss)
-  parser.add_argument('-rt', '--rnn_type',
-                      type=int, default=default_rnn_type,
-                      nargs='?', choices=range(0, 4), help='Type of rnn cell -->'
+  parser.add_argument('-rt', '--rnn_type', type=int,
+                      default=default_rnn_type, nargs='?',
+                      choices=range(0, 4), help='Type of rnn cell -->'
                       '[0:Basic], [1:basic LSTM], [2:full LSTM], [3:GRU].'
                       '(default:%d)'%default_rnn_type)
   parser.add_argument('-lr', '--learning_rate',
@@ -360,8 +346,8 @@ if __name__ == '__main__':
                       nargs='?', help='Value of initial learning rate.'
                       '(default:%r)'%default_learning_rate)
   parser.add_argument('-mgn', '--max_grad_norm',
-                      type=float, default=default_max_grad_norm,
-                      nargs='?', help='Maximum gradient norm allowed. (default:%r)'
+                      type=float, default=default_max_grad_norm, nargs='?',
+                      help='Maximum gradient norm allowed. (default:%r)'
                       %default_max_grad_norm)
   parser.add_argument('-is', '--init_scale',
                       type=float, default=default_init_scale,
@@ -398,14 +384,18 @@ if __name__ == '__main__':
   parser.add_argument('-b', '--beam_search', type=int,
                       default=default_beam_size, nargs='?',
                       help='Size of beam search.(default:%d)'%default_beam_size)
-  #parser.add_argument('-dd', '--data_dir',
-  #                    type=str, default=default_data_dir, nargs='?',
-  #                    help='Directory where the data are placed.'
-  #                    '(default:%s)'%default_data_dir)
-  #parser.add_argument('-of', '--output_filename',
-  #                    type=str, default=default_output_filename, nargs='?',
-  #                    help='Filename of the final prediction.'
-  #                    '(default:%s)'%default_output_filename)
+  parser.add_argument('-tl', '--train_list',
+                      type=str, default=default_train_data, nargs='?',
+                      help='List all train data. (default:%s)'
+                      %default_train_list)
+  parser.add_argument('-il', '--inference_list',
+                      type=str, default=default_inference_data, nargs='?',
+                      help='List all inference data (default:%s)'
+                      %default_inference_list)
+  parser.add_argument('-of', '--output_filename',
+                      type=str, default=default_output_filename, nargs='?',
+                      help='Filename of the final prediction.'
+                      '(default:%s)'%default_output_filename)
   args = parser.parse_args()
 
   #calculate real epochs
@@ -479,7 +469,7 @@ if __name__ == '__main__':
 
     config = tf.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 0.5
-    sv = tf.train.Supervisor(logdir='./logs/')
+    sv = tf.train.Supervisor(logdir='logs/')
     with sv.managed_session(config=config) as sess:
 
       for i in range(1, args.max_epoch+1):
@@ -496,7 +486,6 @@ if __name__ == '__main__':
         results.extend(run_epoch(sess, test_model, test_args))
       results = [ ' '.join(result[:-1]) for result in results ]
       for result in results: print(result)
-
   filelist = open('testing_list.txt', 'r').read().splitlines()
   filenames = [ fl for fl in filelist ]
   output = [{"caption": result, "id": filename}
