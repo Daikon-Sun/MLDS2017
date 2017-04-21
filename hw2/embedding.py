@@ -9,7 +9,7 @@ def normalized(sent):
   s = sent.lower()
   for deli in ['\'','.','?','!',',',';',':','\"']:
     s = re.sub('['+deli+']', ' '+deli, s)
-  return ' '.join(s.split())
+  return '<bos> ' + ' '.join(s.split()) + ' <eos>'
 
 # Parse the given content into dependency trees
 def embedding(input_file, output_word_file, output_vector_file, dimension):
