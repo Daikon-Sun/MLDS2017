@@ -3,6 +3,7 @@ import argparse
 import tensorflow as tf
 import numpy as np
 import json
+import math
 from tqdm import tqdm
 from nltk.tokenize import sent_tokenize
 from nltk.tokenize import word_tokenize
@@ -33,6 +34,9 @@ if __name__ == '__main__':
       help='the output directoy of testing TFRecorder files')
   argparser.add_argument('-c', '--convert',
       help='convert testing .npy in .tfr only without training data',
+      action='store_true')
+  argparser.add_argument('-s', '--short',
+      help='select single caption among captions for each video',
       action='store_true')
   args = argparser.parse_args()
 
@@ -92,6 +96,8 @@ if __name__ == '__main__':
       video_array_flat = np.reshape(video_array, 80*4096)
       writer = tf.python_io.TFRecordWriter(args.output_dir+'/'+training_label[i]["id"]+'.tfr')
       for j in range(len(training_label[i]["caption"])):
+        if args.short:
+          j = math.floor(len(training_label[i]["caption"]) / 2)
         words = word_tokenize(training_label[i]["caption"][j].lower())
         words_id = []
         words_id.append(BOS)
@@ -113,9 +119,9 @@ if __name__ == '__main__':
               'video': tf.train.Feature(
                 float_list=tf.train.FloatList(value=video_array_flat)),
               'caption': tf.train.Feature(
-                int64_list=tf.train.Int64List(value=words_id)),
-              'caption_length': tf.train.Feature(
-                int64_list=tf.train.Int64List(value=[caption_length]))}))
+                int64_list=tf.train.Int64List(value=words_id))}))
         serialized = example.SerializeToString()
         writer.write(serialized)
+        if args.short:
+          break
       writer.close()
