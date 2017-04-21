@@ -214,7 +214,7 @@ class S2VT(object):
           next_cell_state = layer_2_cell.zero_state(para.batch_size, dtype=tf.float32)
         else:
           next_cell_state = cell_state
-        all_finished = (time >= sequence_length)
+        all_finished = (time >= (sequence_length-1))
         start_decoding = (time >= video_frame_num)
         start_decoding = tf.reduce_all(start_decoding)
         next_input = tf.cond(start_decoding, decode_input, encode_input)
@@ -222,15 +222,18 @@ class S2VT(object):
         return (all_finished, next_input, next_cell_state, emit_output, loop_state)
 
     layer_2_outputs_ta, layer_2_final_state, _ = tf.nn.raw_rnn(layer_2_cell, layer_2_loop_fn)
-    layer_2_outputs = layer_2_outputs_ta.stack() # may not be time-major here
+    layer_2_outputs = layer_2_outputs_ta.stack()
     self._val1 = layer_2_outputs
+    layer_2_outputs = layer_2_outputs[para.video_frame_num:, :, :]#new
 
     if self.is_train():
       layer_2_outputs = tf.reshape(layer_2_outputs, [-1, para.hidden_units])
       layer_2_output_logit = tf.matmul(layer_2_outputs, word_decoding_w)
+      #layer_2_output_logit = tf.reshape(layer_2_output_logit,
+      #                         [para.batch_size, para.video_frame_num+max_len-1, para.vocab_size])
       layer_2_output_logit = tf.reshape(layer_2_output_logit,
-                               [para.batch_size, para.video_frame_num+max_len-1, para.vocab_size])
-      layer_2_output_logit = layer_2_output_logit[:, para.video_frame_num:, :]
+                               [para.batch_size, max_len-1, para.vocab_size])
+      #layer_2_output_logit = layer_2_output_logit[:, para.video_frame_num:, :]
       self._prob = tf.nn.softmax(layer_2_output_logit)
 
       loss = sequence_loss(layer_2_output_logit, target_captions_output, caption_mask)
@@ -246,7 +249,8 @@ class S2VT(object):
     else:
       layer_2_outputs = tf.reshape(layer_2_outputs, [-1, para.hidden_units])
       layer_2_output_logit = tf.matmul(layer_2_outputs, word_decoding_w)
-      max_prob_index = tf.argmax(layer_2_output_logit, 1)[0]
+      layer_2_output_logit = tf.reshape(layer_2_output_logit, [para.batch_size, -1])
+      max_prob_index = tf.argmax(layer_2_output_logit, 1)
       self._prob = max_prob_index
 
   # ======================== end of __init__ ======================== #
@@ -312,16 +316,13 @@ def run_epoch(sess, model, args):
     fetches['prob'] = model.prob
     vals = sess.run(fetches)
     prob = vals['prob']
-    bests = []
+    ans = []
     for i in range(prob.shape[0]):
-      ans = []
-      for j in range(prob.shape[1]):
-        max_id = np.argmax(prob[i, j, :])
-        if max_id == EOS:
-          break
-        ans.append(dct[max_id])
-      bests.append(ans)
-    return bests
+      max_id = np.argmax(prob[i])
+      if max_id == EOS:
+        break
+      ans.append(vocab_dictionary[max_id])
+    return ans
 
 if __name__ == '__main__':
   argparser = argparse.ArgumentParser(description='S2VT encoder and decoder')
@@ -379,7 +380,7 @@ if __name__ == '__main__':
   print('S2VT start...\n')
 
   print('Loading vocab dictionary...\n')
-  vocab_dictionary_path = 'MLDS_hw2_data/training_data/jason_vocab.json'
+  vocab_dictionary_path = 'MLDS_hw2_data/training_data/jason_reverse_vocab.json'
   with open(vocab_dictionary_path) as vocab_dictionary_json:
     vocab_dictionary = json.load(vocab_dictionary_json)
   args.vocab_size = len(vocab_dictionary)

@@ -14,6 +14,9 @@ if __name__ == '__main__':
   argparser.add_argument('-v', '--vocab_file',
       type=str, default='MLDS_hw2_data/training_data/jason_vocab.json',
       help='output dictionary of the table for vocabs',)
+  argparser.add_argument('-rv', '--reverse_vocab_file',
+      type=str, default='MLDS_hw2_data/training_data/jason_reverse_vocab.json',
+      help='output dictionary of the reverse table for vocabs',)
   argparser.add_argument('-l','--training_label',
   	  type=str, default='MLDS_hw2_data/training_label.json',
   	  help='training label with video id and captions in .json format')
@@ -64,12 +67,19 @@ if __name__ == '__main__':
   UNK = 3
 
   # dictionary initialize
-  vocab_table = dict()
+  vocab_table = dict() # word to int
   vocab_table['<PAD>'] = PAD
   vocab_table['<BOS>'] = BOS
   vocab_table['<EOS>'] = EOS
   vocab_table['<UNK>'] = UNK
   index = 4
+
+  # reverse dictionary initialize
+  reverse_vocab_table = dict() # int to word
+  reverse_vocab_table[0] = '<PAD>'
+  reverse_vocab_table[1] = '<BOS>'
+  reverse_vocab_table[2] = '<EOS>'
+  reverse_vocab_table[3] = '<UNK>'
 
   # define maximum length of caption
   #max_caption_length = 20
@@ -80,15 +90,20 @@ if __name__ == '__main__':
     sys.stderr.write('start building vocab dictionary...\n')
     for i in tqdm(range(len(training_label))):
       for j in range(len(training_label[i]["caption"])):
-      	words = word_tokenize(training_label[i]["caption"][j].lower())
-      	for w in words:
-      	  if w in vocab_table:
-      	    continue;
-      	  else:
-      	  	vocab_table[w] = index
-      	  	index = index + 1;
+        words = word_tokenize(training_label[i]["caption"][j].lower())
+        for w in words:
+          if w in vocab_table:
+            continue;
+          else:
+            vocab_table[w] = index
+            reverse_vocab_table[index] = w
+            index = index + 1;
     with open(args.vocab_file, 'w') as vocab_file:
       json.dump(vocab_table, vocab_file)
+    with open(args.reverse_vocab_file, 'w') as reverse_vocab_file:
+      json.dump(reverse_vocab_table, reverse_vocab_file)
+
+    
 
     sys.stderr.write('start converting training data into TFR format...\n')
     for i in tqdm(range(len(training_label))):
