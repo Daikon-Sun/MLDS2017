@@ -198,7 +198,7 @@ class S2S(object):
       filenames = [ 'test_tfrdata/'+fl+'.tfr' for fl in filelist ]
       f_queue = tf.train.string_input_producer(filenames, shuffle=False)
     else:
-      filelist = open('training_list.txt', 'r').read().splitlines()
+      filelist = open('train_list.txt', 'r').read().splitlines()
       filenames = [ 'train_tfrdata/'+fl+'.tfr' for fl in filelist ]
       if self.is_train(): filenames = filenames[:para.train_num]
       else: filenames = filenames[para.train_num:]
@@ -385,11 +385,11 @@ if __name__ == '__main__':
                       default=default_beam_size, nargs='?',
                       help='Size of beam search.(default:%d)'%default_beam_size)
   parser.add_argument('-tl', '--train_list',
-                      type=str, default=default_train_data, nargs='?',
+                      type=str, default=default_train_list, nargs='?',
                       help='List all train data. (default:%s)'
                       %default_train_list)
   parser.add_argument('-il', '--inference_list',
-                      type=str, default=default_inference_data, nargs='?',
+                      type=str, default=default_inference_list, nargs='?',
                       help='List all inference data (default:%s)'
                       %default_inference_list)
   parser.add_argument('-of', '--output_filename',
