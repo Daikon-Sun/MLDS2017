@@ -1,4 +1,4 @@
-#!/bin/python3
+#!/usr/bin/python3
 import math, operator, sys
 import numpy as np
 import json

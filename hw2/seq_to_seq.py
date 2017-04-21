@@ -10,7 +10,6 @@ from tensorflow.contrib.seq2seq.python.ops.attention_decoder_fn \
 import tensorflow.contrib.seq2seq as seq2seq
 from tensorflow.contrib.seq2seq import sequence_loss as sequence_loss
 from tensorflow.contrib.layers import legacy_fully_connected as fully_connected
-from nltk.tokenize import word_tokenize
 
 class S2S(object):
 
@@ -116,8 +115,8 @@ class S2S(object):
             attention_score_fn=at_score,
             attention_construct_fn=at_cons,
             embeddings=W_E,
-            start_of_sequence_id=2,
-            end_of_sequence_id=3,
+            start_of_sequence_id=1,
+            end_of_sequence_id=2,
             maximum_length=30,
             num_decoder_symbols=para.vocab_size)
       else:
@@ -125,8 +124,8 @@ class S2S(object):
             output_fn=output_fn,
             encoder_state=encoder_states,
             embeddings=W_E,
-            start_of_sequence_id=2,
-            end_of_sequence_id=3,
+            start_of_sequence_id=1,
+            end_of_sequence_id=2,
             maximum_length=30,
             num_decoder_symbols=para.vocab_size)
       with tf.variable_scope('decode', reuse=True):
@@ -194,33 +193,30 @@ class S2S(object):
   def get_single_example(self, para):
     '''get one example from TFRecorder file using tf default queue runner'''
     if self.is_test():
-      filelist = open('testing_list.txt', 'r').read().splitlines()
-      filenames = [ 'test_tfrdata/'+fl+'.tfr' for fl in filelist ]
+      filelist = open(para.inference_list, 'r').read().splitlines()
+      filenames = [fl for fl in filelist]
       f_queue = tf.train.string_input_producer(filenames, shuffle=False)
     else:
-      filelist = open('train_list.txt', 'r').read().splitlines()
-      filenames = [ 'train_tfrdata/'+fl+'.tfr' for fl in filelist ]
+      filelist = open(para.train_list, 'r').read().splitlines()
+      filenames = [fl for fl in filelist]
       if self.is_train(): filenames = filenames[:para.train_num]
       else: filenames = filenames[para.train_num:]
       f_queue = tf.train.string_input_producer(filenames, shuffle=True)
-
     reader = tf.TFRecordReader()
-
     _, serialized_example = reader.read(f_queue)
 
     if self.is_test():
       feature = tf.parse_single_example(serialized_example, features={
-        'video': tf.FixedLenFeature([para.video_len*para.video_dim],
-                                    tf.float32)})
-      video = tf.reshape(feature['video'], [-1, para.video_dim])[::5]
+        'video': tf.VarLenFeature(tf.float32)})
+      video = tf.sparse_tensor_to_dense(feature['video'])
+      video = tf.reshape(video, [-1, para.video_dim])[::para.video_step]
       return video, tf.shape(video)[0]
     else:
-      feature = tf.parse_single_example(serialized_example,
-        features={
-            'video': tf.FixedLenFeature([para.video_len*para.video_dim],
-                                        tf.float32),
-            'caption': tf.VarLenFeature(tf.int64)})
-      video = tf.reshape(feature['video'], [-1, para.video_dim])[::5]
+      feature = tf.parse_single_example(serialized_example, features={
+        'video':tf.VarLenFeature(tf.float32),
+        'caption':tf.VarLenFeature(tf.int64)})
+      video = tf.sparse_tensor_to_dense(feature['video'])
+      video = tf.reshape(video, [-1, para.video_dim])[::para.video_step]
       caption = feature['caption']
       return video, caption, tf.shape(video)[0], tf.shape(caption)[0]-1
 
@@ -232,8 +228,6 @@ class S2S(object):
   def prob(self): return self._prob
   @property
   def val1(self): return self._val1
-  #@property
-  #def val2(self): return self._val2
 
 def run_epoch(sess, model, args):
   '''Runs the model on the given data.'''
@@ -285,6 +279,7 @@ if __name__ == '__main__':
   default_video_dim = 4096
   default_train_num = 1450
   default_video_step = 5
+  default_vocab_file = 'train_tfrdata/vocab.txt'
   #default_wordvec_src = 3
   optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,
                 tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,
@@ -304,7 +299,7 @@ if __name__ == '__main__':
                       type=int, default=default_embed_dim,
                       nargs='?', help='Embedding dimension of vocabularies. '
                       '(default:%d)'%default_embed_dim)
-  parser.add_argument('-vl', '--video_step',
+  parser.add_argument('-vs', '--video_step',
                       type=int, default=default_video_step,
                       nargs='?', help='Choose a frame per step. (default:%d)'
                       %default_video_step)
@@ -384,6 +379,9 @@ if __name__ == '__main__':
   parser.add_argument('-b', '--beam_search', type=int,
                       default=default_beam_size, nargs='?',
                       help='Size of beam search.(default:%d)'%default_beam_size)
+  parser.add_argument('-vf', '--vocab_file', type=str, nargs='?',
+                      default=default_vocab_file, help='List all train data. '
+                      '(default:%s)'%default_vocab_file)
   parser.add_argument('-tl', '--train_list',
                       type=str, default=default_train_list, nargs='?',
                       help='List all train data. (default:%s)'
@@ -400,50 +398,10 @@ if __name__ == '__main__':
 
   #calculate real epochs
   print('training with %.3f epochs!'%((args.batch_size*args.max_epoch)/1450))
-
-  dct_file = 'train_tfrdata/vocab.txt'
-  if tf.gfile.Exists(dct_file):
-    vocab = open(dct_file, 'r').read().splitlines()
-    dct = dict([[i, word] for i, word in enumerate(vocab)])
-  else:
-    with open('MLDS_hw2_data/training_label.json', 'r') as label_json:
-      labels = json.load(label_json)
-      captions = [ [ word_tokenize(sent.lower()) for sent in label['caption'] ]
-                 for label in labels ]
-      sents = [ sent for caption in captions for sent in caption ]
-      vocabs = set([ word for sent in sents for word in sent ])
-      vocabs = ['<pad>', '<unk>', '<bos>', '<eos>'] + list(vocabs)
-      dct = dict([(i, word) for i, word in enumerate(vocabs)])
-      word_to_id = dict([(word, i) for i, word in enumerate(vocabs)])
-    with open('train_tfrdata/vocab.txt', 'w') as f:
-      for word in dct.values():
-        f.write(word+'\n')
+  vocab = open(args.vocab_file, 'r').read().splitlines()
+  dct = dict([[i, word] for i, word in enumerate(vocab)])
   args.vocab_size = len(dct)
-  print('vocab_size = %d'%args.vocab_size)
-
-  with open('MLDS_hw2_data/training_label.json', 'r') as label_json:
-    labels = json.load(label_json)
-    for i in tqdm(range(len(labels))):
-      label = labels[i]
-      out_name = 'train_tfrdata/'+label['id']+'.tfr'
-      if not tf.gfile.Exists(out_name):
-        video = np.load('MLDS_hw2_data/training_data/feat/'+label['id']+'.npy')
-        video = video.reshape((-1, 1))
-        #m_i = np.argmin([len(caption) for caption in captions[i]])
-        m_i = len(captions[i])//2
-        writer = tf.python_io.TFRecordWriter(out_name)
-        word_ids = [ word_to_id[word] for word in captions[i][m_i] ]
-        word_ids = [2] + word_ids + [3]
-        example = tf.train.Example(
-          features=tf.train.Features(
-            feature={
-              'video': tf.train.Feature(
-                float_list=tf.train.FloatList(value=video)),
-              'caption': tf.train.Feature(
-                int64_list=tf.train.Int64List(value=word_ids))}))
-        serialized = example.SerializeToString()
-        writer.write(serialized)
-        writer.close()
+  print('vocab size = %d'%args.vocab_size)
 
   with tf.Graph().as_default():
     initializer = tf.random_uniform_initializer(-args.init_scale,
@@ -486,9 +444,9 @@ if __name__ == '__main__':
         results.extend(run_epoch(sess, test_model, test_args))
       results = [ ' '.join(result[:-1]) for result in results ]
       for result in results: print(result)
-  filelist = open('testing_list.txt', 'r').read().splitlines()
+  filelist = open(args.inference_list, 'r').read().splitlines()
   filenames = [ fl for fl in filelist ]
   output = [{"caption": result, "id": filename}
          for result, filename in zip(results, filenames)]
-  with open('output.json', 'w') as f:
+  with open(args.output_filename, 'w') as f:
     json.dump(output, f)
