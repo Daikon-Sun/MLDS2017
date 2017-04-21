@@ -14,7 +14,7 @@ default_rnn_cell_type         = 1    # 0: BsicRNN, 1: BasicLSTM, 2: FullLSTM, 3:
 default_video_dimension       = 4096 # dimension of each frame
 default_video_frame_num       = 80   # each video has fixed 80 frames
 default_vocab_size            = 6089
-default_max_caption_length    = 21
+default_max_caption_length    = 20
 default_embedding_dimension   = 500  # embedding dimension for video and vocab
 default_hidden_units          = 1000 # according to paper
 default_batch_size            = 290
@@ -140,9 +140,9 @@ class S2VT(object):
     if not self.is_test():
       sequence_length = tf.add(video_frame_num, caption_lens-1)
     else:
-      sequence_length = tf.add(video_frame_num, max_len)
+      sequence_length = tf.add(video_frame_num, max_len-1)
 
-    total_length = tf.add(video_frame_num, max_len)
+    #total_length = tf.add(video_frame_num, max_len)
 
     # reshape for rnn
     sequence_length = tf.reshape(sequence_length, [-1])
@@ -194,10 +194,19 @@ class S2VT(object):
           if cell_output is None:
             return tf.zeros([para.batch_size, para.embedding_dimension+para.hidden_units], dtype=tf.float32)
           else:
-            output_logit = tf.matmul(cell_output, word_decoding_w)
-            prediction = tf.argmax(output_logit, axis=1)
-            prediction_embed = tf.nn.embedding_lookup(word_embedding_w, prediction)
-            next_input = tf.concat([prediction_embed, layer_2_inputs_ta.read(time)], 1)
+            def is_begin():
+              begin_of_sentence = tf.ones([para.batch_size, para.embedding_dimension], dtype=tf.float32)
+              next_input = tf.concat([begin_of_sentence, layer_2_inputs_ta.read(time)], 1)
+              return next_input
+            def not_begin():
+              output_logit = tf.matmul(cell_output, word_decoding_w)
+              prediction = tf.argmax(output_logit, axis=1)
+              prediction_embed = tf.nn.embedding_lookup(word_embedding_w, prediction)
+              next_input = tf.concat([prediction_embed, layer_2_inputs_ta.read(time)], 1)
+              return next_input
+            begin = tf.equal(time,video_frame_num)
+            begin = tf.reduce_all(begin)
+            next_input = tf.cond(begin, is_begin, not_begin)
             return next_input
 
         emit_output = cell_output
@@ -205,7 +214,7 @@ class S2VT(object):
           next_cell_state = layer_2_cell.zero_state(para.batch_size, dtype=tf.float32)
         else:
           next_cell_state = cell_state
-        all_finished = (time >= total_length)
+        all_finished = (time >= sequence_length)
         start_decoding = (time >= video_frame_num)
         start_decoding = tf.reduce_all(start_decoding)
         next_input = tf.cond(start_decoding, decode_input, encode_input)
@@ -238,7 +247,7 @@ class S2VT(object):
       layer_2_outputs = tf.reshape(layer_2_outputs, [-1, para.hidden_units])
       layer_2_output_logit = tf.matmul(layer_2_outputs, word_decoding_w)
       max_prob_index = tf.argmax(layer_2_output_logit, 1)[0]
-      self._result = max_prob_index
+      self._prob = max_prob_index
 
   # ======================== end of __init__ ======================== #
 
@@ -278,11 +287,9 @@ class S2VT(object):
         features={
           'video': tf.FixedLenFeature([para.video_frame_num*para.video_dimension], tf.float32),
           'caption': tf.VarLenFeature(tf.int64),
-          'caption_length': tf.FixedLenFeature([1], tf.int64)
         })
       video = tf.reshape(features['video'], [para.video_frame_num, para.video_dimension])
       caption = features['caption']
-      caption_length = features['caption_length']
       return video, caption, tf.shape(video)[0], tf.shape(caption)[0]
     else:
       features = tf.parse_single_example(
