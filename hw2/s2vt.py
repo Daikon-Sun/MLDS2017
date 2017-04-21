@@ -416,4 +416,3 @@ if __name__ == '__main__':
               for result, filename in zip(results, filenames)]
     with open('jason/output.json', 'w') as f:
       json.dump(output, f)
-    os.system('python3 bleu_eval.py jason/output.json MLDS_hw2_data/testing_public_label.json')
