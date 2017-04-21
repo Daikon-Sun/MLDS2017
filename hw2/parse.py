@@ -118,3 +118,4 @@ if __name__ == '__main__':
                 int64_list=tf.train.Int64List(value=[caption_length]))}))
         serialized = example.SerializeToString()
         writer.write(serialized)
+      writer.close()
