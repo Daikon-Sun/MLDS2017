@@ -186,7 +186,7 @@ class S2VT(object):
         def encode_input():
           layer_2_inputs = layer_2_inputs_ta.read(time)
           padding = tf.zeros([para.batch_size, para.embedding_dimension], dtype=tf.float32)
-          return tf.concat([padding, layer_4_inputs], 1)
+          return tf.concat([padding, layer_2_inputs], 1)
 
         def decode_input():
           if cell_output is None:
