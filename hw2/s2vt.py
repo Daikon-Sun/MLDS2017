@@ -91,8 +91,10 @@ class S2VT(object):
       # sparse tensor cannot be sliced
       caption_lens = tf.to_int32(caption_lens)
       caption_lens_reshape = tf.reshape(caption_lens, [-1]) # reshape to 1D
+      caption_lens_reshape = tf.add(caption_lens_reshape, -1) # -1 for sequence mask
       max_len = tf.reduce_max(caption_lens)
       caption_mask = tf.sequence_mask(caption_lens_reshape, max_len-1, dtype=tf.float32)
+
       target_captions = tf.sparse_tensor_to_dense(captions)
       target_captions_input  = target_captions[:,  :-1] # start from <BOS>
       target_captions_output = target_captions[:, 1:  ] # end by <EOS>
@@ -134,9 +136,9 @@ class S2VT(object):
     layer_2_padding = tf.zeros([para.batch_size, para.video_frame_num, para.embedding_dimension])
     # preparing sequence length
     video_frame_num = tf.constant(para.video_frame_num, dtype=tf.int32,
-                                  shape=[para.batch_size, 1])
+                                  shape=[para.batch_size])
     if not self.is_test():
-      sequence_length = tf.add(video_frame_num, caption_lens)
+      sequence_length = tf.add(video_frame_num, caption_lens-1)
     else:
       sequence_length = tf.add(video_frame_num, max_len)
 
@@ -152,16 +154,16 @@ class S2VT(object):
     #layer_1_inputs = tf.transpose(layer_1_inputs, perm=[1, 0, 2]) # for time major purpose
     layer_1_inputs_ta = layer_1_inputs_ta.unstack(layer_1_inputs)
     with tf.variable_scope('layer_1'):
-      layer_1_outputs_ta, layer_1_final_state = tf.nn.dynamic_rnn(layer_1_cell,
+      layer_1_outputs, layer_1_final_state = tf.nn.dynamic_rnn(layer_1_cell,
                                                   layer_1_inputs,
                                                   sequence_length=sequence_length,
                                                   dtype=tf.float32)
     if self.is_train():
       caption_embed = tf.nn.embedding_lookup(word_embedding_w, target_captions_input)
       layer_2_pad_and_embed = tf.concat([layer_2_padding, caption_embed], 1)
-      layer_2_inputs = tf.concat([layer_2_pad_and_embed, layer_1_outputs_ta], 2)
+      layer_2_inputs = tf.concat([layer_2_pad_and_embed, layer_1_outputs], 2)
     else:
-      layer_2_inputs = layer_1_outputs_ta
+      layer_2_inputs = layer_1_outputs
     layer_2_inputs = tf.transpose(layer_2_inputs, perm=[1,0,2]) # for time major unstack
     layer_2_inputs_ta = tf.TensorArray(dtype=tf.float32,
                                        size=para.video_frame_num+max_len)
@@ -173,7 +175,7 @@ class S2VT(object):
           next_cell_state = layer_2_cell.zero_state(para.batch_size, dtype=tf.float32)
         else:
           next_cell_state = cell_state
-        is_finished = (time+1 >= sequence_length)
+        is_finished = (time >= sequence_length)
         finished = tf.reduce_all(is_finished)
         next_input = tf.cond(
           finished,
@@ -203,7 +205,7 @@ class S2VT(object):
           next_cell_state = layer_2_cell.zero_state(para.batch_size, dtype=tf.float32)
         else:
           next_cell_state = cell_state
-        all_finished = (time >= total_length)[0]
+        all_finished = (time >= total_length)
         start_decoding = (time >= video_frame_num)
         start_decoding = tf.reduce_all(start_decoding)
         next_input = tf.cond(start_decoding, decode_input, encode_input)
@@ -281,7 +283,7 @@ class S2VT(object):
       video = tf.reshape(features['video'], [para.video_frame_num, para.video_dimension])
       caption = features['caption']
       caption_length = features['caption_length']
-      return video, caption, tf.shape(video)[0], caption_length
+      return video, caption, tf.shape(video)[0], tf.shape(caption)[0]
     else:
       features = tf.parse_single_example(
         serialized_example,
