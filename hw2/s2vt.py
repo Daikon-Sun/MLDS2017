@@ -7,7 +7,6 @@ import sys
 import copy
 import json
 import tensorflow.contrib.seq2seq as seq2seq
-from tensorflow.contrib.layers import safe_embedding_lookup_sparse as embedding_lookup_unique
 from tensorflow.contrib.rnn import LSTMCell, LSTMStateTuple, GRUCell
 from tensorflow.contrib.seq2seq import sequence_loss as sequence_loss
 
@@ -18,7 +17,7 @@ default_vocab_size            = 6089
 default_max_caption_length    = 21
 default_embedding_dimension   = 500  # embedding dimension for video and vocab
 default_hidden_units          = 1000 # according to paper
-default_batch_size            = 145
+default_batch_size            = 290
 default_layer_number          = 1
 default_max_gradient_norm     = 2
 default_dropout_keep_prob     = 1#0.5    # for dropout layer
@@ -59,11 +58,11 @@ class S2VT(object):
 
     def single_cell():
       if para.rnn_cell_type == 0:
-        return tf.contrib.rnn.BasicRNNCell(para.hidden_units, activation=tf.tanh)
+        return tf.contrib.rnn.BasicRNNCell(para.hidden_units)
       elif para.rnn_cell_type == 1:
-        return tf.contrib.rnn.BasicLSTMCell(para.hidden_units, state_is_tuple=True)
+        return tf.contrib.rnn.BasicLSTMCell(para.hidden_units)
       elif para.rnn_cell_type == 2:
-        return tf.contrib.rnn.LSTMCell(para.hidden_units, use_peepholes=True, state_is_tuple=True)
+        return tf.contrib.rnn.LSTMCell(para.hidden_units, use_peepholes=True)
       elif para.rnn_cell_type == 3:
         return tf.contrib.rnn.GRUCell(para.hidden_units)
 
@@ -127,13 +126,6 @@ class S2VT(object):
     if self.is_train() and para.dropout_keep_prob < 1:
       embed_video_inputs = tf.nn.dropout(embed_video_inputs, para.dropout_keep_prob)
 
-    # Initial state of the LSTM memory.
-    #with tf.variable_scope('building_model') as scope:
-    #  with tf.variable_scope("layer_1"):
-    #    state_1 = layer_1_cell.zero_state(para.batch_size, dtype=tf.float32)
-    #  with tf.variable_scope("layer_2"):
-    #    state_2 = layer_2_cell.zero_state(para.batch_size, dtype=tf.float32)
-
     # initialize cost
     cost = tf.constant(0.0)
 
@@ -164,7 +156,6 @@ class S2VT(object):
                                                   layer_1_inputs,
                                                   sequence_length=sequence_length,
                                                   dtype=tf.float32)
-
     if self.is_train():
       caption_embed = tf.nn.embedding_lookup(word_embedding_w, target_captions_input)
       layer_2_pad_and_embed = tf.concat([layer_2_padding, caption_embed], 1)
@@ -193,13 +184,11 @@ class S2VT(object):
       def layer_2_loop_fn(time, cell_output, cell_state, loop_state):
 
         def encode_input():
-          return tf.zeros([para.batch_size, para.embedding_dimension+para.hidden_units], dtype=tf.float32)
           layer_2_inputs = layer_2_inputs_ta.read(time)
           padding = tf.zeros([para.batch_size, para.embedding_dimension], dtype=tf.float32)
           return tf.concat([padding, layer_4_inputs], 1)
 
         def decode_input():
-          return tf.zeros([para.batch_size, para.embedding_dimension+para.hidden_units], dtype=tf.float32)
           if cell_output is None:
             return tf.zeros([para.batch_size, para.embedding_dimension+para.hidden_units], dtype=tf.float32)
           else:
