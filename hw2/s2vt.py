@@ -300,8 +300,6 @@ class S2VT(object):
 def run_epoch(sess, model, args):
   fetches = {}
   if not model.is_test():
-    fetches['val1'] = model.val1
-    fetches['val2'] = model.val2
     fetches['cost'] = model.cost
     if model.is_train():
       fetches['eval'] = model.eval
