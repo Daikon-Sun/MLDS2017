@@ -24,7 +24,7 @@ default_init_scale            = 0.005  # for tensorflow initializer
 default_max_epoch             = 10000
 default_info_epoch            = 1
 default_testing_video_num     = 50     # number of testing videos
-default_video_step            = 10
+default_video_step            = 8
 default_learning_rate         = 0.001
 default_learning_rate_decay_factor = 1
 
@@ -122,7 +122,7 @@ class S2VT(object):
     video_flat = tf.reshape(videos, [-1, para.video_dimension])
     embed_video_inputs = tf.matmul(video_flat, video_embedding_w)
     embed_video_inputs = tf.reshape(embed_video_inputs,
-      [para.batch_size, int(para.video_frame_num/para.video_step), para.embedding_dimension])
+      [para.batch_size, para.video_frame_num//para.video_step, para.embedding_dimension])
 
     # apply dropout to inputs
     if self.is_train() and para.dropout_keep_prob < 1:
@@ -133,10 +133,10 @@ class S2VT(object):
 
     # paddings for 1st and 2nd layers
     layer_1_padding = tf.zeros([para.batch_size, max_len-1, para.embedding_dimension])
-    layer_2_padding = tf.zeros([para.batch_size, int(para.video_frame_num/para.video_step), para.embedding_dimension])
+    layer_2_padding = tf.zeros([para.batch_size, para.video_frame_num//para.video_step, para.embedding_dimension])
     
     # preparing sequence length
-    video_frame_num = tf.constant(int(para.video_frame_num/para.video_step), dtype=tf.int32,
+    video_frame_num = tf.constant(para.video_frame_num//para.video_step, dtype=tf.int32,
                                   shape=[para.batch_size])
     if not self.is_test():
       sequence_length = tf.add(video_frame_num, caption_lens-1)
@@ -147,10 +147,6 @@ class S2VT(object):
 
     # =================== layer 1 ===================
     layer_1_inputs = tf.concat([embed_video_inputs, layer_1_padding], 1)
-    #layer_1_inputs_ta = tf.TensorArray(dtype=tf.float32,
-    #                                   size=int(para.video_frame_num/para.video_step)+max_len-1)
-    #layer_1_inputs = tf.transpose(layer_1_inputs, perm=[1, 0, 2]) # for time major purpose
-    #layer_1_inputs_ta = layer_1_inputs_ta.unstack(layer_1_inputs)
     with tf.variable_scope('layer_1'):
       layer_1_outputs, layer_1_final_state = tf.nn.dynamic_rnn(layer_1_cell,
                                                   layer_1_inputs,
@@ -167,7 +163,7 @@ class S2VT(object):
 
     layer_2_inputs = tf.transpose(layer_2_inputs, perm=[1,0,2]) # for time major unstack
     layer_2_inputs_ta = tf.TensorArray(dtype=tf.float32,
-                                       size=int(para.video_frame_num/para.video_step)+max_len-1)
+                                       size=para.video_frame_num//para.video_step+max_len-1)
     layer_2_inputs_ta = layer_2_inputs_ta.unstack(layer_2_inputs)
 
     if self.is_train():
@@ -224,18 +220,14 @@ class S2VT(object):
 
     layer_2_outputs_ta, layer_2_final_state, _ = tf.nn.raw_rnn(layer_2_cell, layer_2_loop_fn)
     layer_2_outputs = layer_2_outputs_ta.stack()
-    self._val1 = tf.shape(layer_2_outputs)
-    layer_2_outputs = layer_2_outputs[int(para.video_frame_num/para.video_step):, :, :]
+    layer_2_outputs = layer_2_outputs[para.video_frame_num//para.video_step:, :, :]
     layer_2_outputs = tf.transpose(layer_2_outputs, perm=[1,0,2]) # batch_size x time x embed_dim
-    self._val2 = tf.shape(layer_2_outputs)
+
     if self.is_train():
       layer_2_outputs = tf.reshape(layer_2_outputs, [-1, para.hidden_units])
       layer_2_output_logit = tf.matmul(layer_2_outputs, word_decoding_w)
-      #layer_2_output_logit = tf.reshape(layer_2_output_logit,
-      #                         [para.batch_size, para.video_frame_num+max_len-1, para.vocab_size])
       layer_2_output_logit = tf.reshape(layer_2_output_logit,
                                [para.batch_size, max_len-1, para.vocab_size])
-      #layer_2_output_logit = layer_2_output_logit[:, para.video_frame_num:, :]
       self._prob = tf.nn.softmax(layer_2_output_logit)
 
       loss = sequence_loss(layer_2_output_logit, target_captions_output, caption_mask)
@@ -252,7 +244,6 @@ class S2VT(object):
       layer_2_outputs = tf.reshape(layer_2_outputs, [-1, para.hidden_units])
       layer_2_output_logit = tf.matmul(layer_2_outputs, word_decoding_w)
       layer_2_output_logit = tf.reshape(layer_2_output_logit, [para.batch_size, -1, para.vocab_size])
-      #max_prob_index = tf.argmax(layer_2_output_logit, 2)
       self._prob = tf.nn.softmax(layer_2_output_logit)
 
   # ======================== end of __init__ ======================== #
@@ -315,10 +306,6 @@ def run_epoch(sess, model, args):
     if model.is_train():
       fetches['eval'] = model.eval
     vals = sess.run(fetches)
-    print('vals 1:\n')
-    print(vals['val1'])
-    print('vals 2:\n')
-    print(vals['val2'])
     return np.exp(vals['cost'])
   else:
     fetches['prob'] = model.prob
@@ -329,11 +316,9 @@ def run_epoch(sess, model, args):
       ans = []
       for j in range(prob.shape[1]):
         mx_id = np.argmax(prob[i, j, :])
-        print('mx_id:')
-        print(mx_id)
         if mx_id == EOS:
           break
-        ans.extend(vocab_dictionary[str(mx_id)])
+        ans.append(vocab_dictionary[str(mx_id)])
       bests.append(ans)
     return bests
 
