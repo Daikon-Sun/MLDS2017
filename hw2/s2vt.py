@@ -417,7 +417,7 @@ if __name__ == '__main__':
       results = []
       for i in range(default_testing_video_num):
         results.append(run_epoch(sess, test_model, test_args))
-      print(results)
+      for result in results: print(result)
 
     # compute BLEU score
     filenames = open('MLDS_hw2_data/testing_id.txt', 'r').read().splitlines()
