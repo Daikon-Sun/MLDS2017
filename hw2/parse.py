@@ -58,6 +58,7 @@ if __name__ == '__main__':
                   float_list=tf.train.FloatList(value=video_array_flat))}))
         serialized = example.SerializeToString()
         writer.write(serialized)
+        writer.close()
     exit()
 
   # default value for special vocabs
@@ -81,9 +82,6 @@ if __name__ == '__main__':
   reverse_vocab_table[2] = '<EOS>'
   reverse_vocab_table[3] = '<UNK>'
 
-  # define maximum length of caption
-  #max_caption_length = 20
-
   with open(args.training_label) as training_label_json:
     training_label = json.load(training_label_json)
 
@@ -103,8 +101,6 @@ if __name__ == '__main__':
     with open(args.reverse_vocab_file, 'w') as reverse_vocab_file:
       json.dump(reverse_vocab_table, reverse_vocab_file)
 
-    
-
     sys.stderr.write('start converting training data into TFR format...\n')
     for i in tqdm(range(len(training_label))):
       video_array = np.load(args.input_dir+'/'+training_label[i]["id"]+'.npy')
@@ -120,14 +116,9 @@ if __name__ == '__main__':
         for w in words:
           words_id.append(UNK if w not in vocab_table else vocab_table[w])
           counter += 1
-          #if counter >= max_caption_length - 1:
-          #  break
         words_id.append(EOS)
         counter += 1
         caption_length = counter
-        #while counter < max_caption_length:
-        #  words_id.append(PAD)
-        #  counter += 1
         example = tf.train.Example(
           features=tf.train.Features(
             feature={
