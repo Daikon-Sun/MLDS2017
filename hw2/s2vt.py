@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import numpy as np
 import tensorflow as tf
 import argparse
@@ -416,7 +417,7 @@ if __name__ == '__main__':
       # testing
       results = []
       for i in range(default_testing_video_num):
-        results.append(run_epoch(sess, test_model, test_args))
+        results.extend(run_epoch(sess, test_model, test_args))
       for result in results: print(result)
 
     # compute BLEU score
