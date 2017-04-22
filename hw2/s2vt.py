@@ -252,8 +252,8 @@ class S2VT(object):
       layer_2_outputs = tf.reshape(layer_2_outputs, [-1, para.hidden_units])
       layer_2_output_logit = tf.matmul(layer_2_outputs, word_decoding_w)
       layer_2_output_logit = tf.reshape(layer_2_output_logit, [para.batch_size, -1, para.vocab_size])
-      max_prob_index = tf.argmax(layer_2_output_logit, 2)
-      self._prob = max_prob_index
+      #max_prob_index = tf.argmax(layer_2_output_logit, 2)
+      self._prob = tf.nn.softmax(layer_2_output_logit)
 
   # ======================== end of __init__ ======================== #
 
@@ -328,9 +328,12 @@ def run_epoch(sess, model, args):
     for i in range(prob.shape[0]):
       ans = []
       for j in range(prob.shape[1]):
-        if prob[i,j] == EOS:
+        mx_id = np.argmax(prob[i, j, :])
+        print('mx_id:')
+        print(mx_id)
+        if mx_id == EOS:
           break
-        ans.extend(vocab_dictionary[str(prob[i,j])])
+        ans.extend(vocab_dictionary[str(mx_id)])
       bests.append(ans)
     return bests
 
