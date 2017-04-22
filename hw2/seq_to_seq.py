@@ -100,10 +100,11 @@ class S2S(object):
     decoder_cell =\
       tf.contrib.rnn.MultiRNNCell([rnn_cell(para.fac)
                                    for _ in range(para.layer_num)])
-    if para.attention:
+    if para.attention > 0:
+      at_option = ["bahdanau","luong"][para.attention-1]
       at_keys, at_vals, at_score, at_cons =\
         seq2seq.prepare_attention(attention_states=encoder_outputs,
-                                  attention_option="bahdanau",
+                                  attention_option=at_option,
                                   num_units=para.hidden_size*para.fac)
     if self.is_test():
       if para.attention:
@@ -249,7 +250,7 @@ def run_epoch(sess, model, args):
       ps, ans = [], []
       for j in range(prob.shape[1]):
         mx_i = np.argmax(prob[i, j, :])
-        if mx_i == 3:
+        if mx_i == 2:
           break
         ans.append(dct[mx_i])
       bests.append(ans)
@@ -280,6 +281,7 @@ if __name__ == '__main__':
   default_train_num = 1450
   default_video_step = 5
   default_vocab_file = 'train_tfrdata/vocab.txt'
+  default_attention = 0
   #default_wordvec_src = 3
   optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,
                 tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,
@@ -372,8 +374,11 @@ if __name__ == '__main__':
   parser.add_argument('-bi', '--bidirectional',
                       help='use bidirectional rnn instead of unidirectional '
                       'rnn during encoding', action='store_true')
-  parser.add_argument('-at', '--attention',
-                      help='add attention', action='store_true')
+  parser.add_argument('-at', '--attention', type=int,
+                      default=default_attention, nargs='?',
+                      choices=range(0, 3), help='Type of attention -->'
+                      '[0:None], [1:bahdanau], [2:luong].'
+                      '(default:%d)'%default_attention)
   parser.add_argument('-ss', '--scheduled_sampling',
                       help='add scheduled sampling', action='store_true')
   parser.add_argument('-b', '--beam_search', type=int,
