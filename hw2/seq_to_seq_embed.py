@@ -62,11 +62,16 @@ class S2S(object):
                          batch_size=para.batch_size, dynamic_pad=True)
     v_lens = tf.to_int32(v_lens)
     with tf.variable_scope('embedding'):
-      W_E = tf.Variable(tf.constant(0.0, shape=
-                [para.vocab_size, para.embed_dim]), trainable=False, name='W_E')
-      self._embedding = tf.placeholder(tf.float32,
-                                        [para.vocab_size, para.embed_dim])
-      self._embed_init = W_E.assign(self._embedding)
+      if para.use_pretrained:
+        W_E =\
+          tf.Variable(tf.constant(0, shape= [para.vocab_size, para.embed_dim]),
+                      trainable=False, name='W_E')
+        self._embedding = tf.placeholder(tf.float32,
+                                          [para.vocab_size, para.embed_dim])
+        self._embed_init = W_E.assign(self._embedding)
+      else:
+        W_E = tf.get_variable('W_E', [para.vocab_size, para.embed_dim],
+                              dtype=tf.float32)
 
     if not self.is_test():
       decoder_in_embed = tf.nn.embedding_lookup(W_E, decoder_in)
@@ -143,7 +148,9 @@ class S2S(object):
       def decoder_fn_train(time, cell_state, cell_input,
                            cell_output, context):
         if para.scheduled_sampling and cell_output is not None:
-          epsilon = tf.cast(1-(global_step//10)/2000, tf.float32)
+          epsilon = tf.cast(
+            1-(global_step//(para.tot_train_num//para.batch_size+1) /
+               para.max_epoch, tf.float32))
           cell_input = tf.cond(tf.less(tf.random_uniform([1]), epsilon)[0],
                                lambda: cell_input,
                                lambda: tf.gather(W_E, tf.argmax(
@@ -196,7 +203,7 @@ class S2S(object):
   def get_single_example(self, para):
     '''get one example from TFRecorder file using tf default queue runner'''
     if self.is_test():
-      filelist = open(para.inference_list, 'r').read().splitlines()
+      filelist = open(para.testing_list, 'r').read().splitlines()
       filenames = [fl for fl in filelist]
       f_queue = tf.train.string_input_producer(filenames, shuffle=False)
     else:
@@ -240,7 +247,6 @@ def run_epoch(sess, model, args):
     if model.is_train():
       fetches['eval'] = model.eval
     vals = sess.run(fetches)
-    #np.set_printoptions(edgeitems=10, linewidth=200)
     return np.exp(vals['cost'])
 
   else:
@@ -267,7 +273,7 @@ if __name__ == '__main__':
   default_embed_dim = 512
   default_embedding_file = 'vector_100d.npy'
   default_hidden_size = 256
-  default_inference_list = 'testing_list'
+  default_testing_list = 'testing_list'
   default_info_epoch = 1
   default_init_scale = 0.005
   default_keep_prob = 0.7
@@ -276,7 +282,7 @@ if __name__ == '__main__':
   default_rnn_type = 2
   default_train_list = 'training_list'
   default_max_grad_norm = 5
-  default_max_epoch = 10000
+  default_max_epoch = 3000
   default_num_sampled = 2000
   default_optimizer = 4
   default_output_filename = 'output.json'
@@ -284,7 +290,7 @@ if __name__ == '__main__':
   default_train_num = 1450
   default_video_step = 5
   default_vocab_file = 'vocab.json'
-  default_attention = 0
+  default_attention = 1
   optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,
                 tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,
                 tf.train.AdamOptimizer, tf.train.RMSPropOptimizer]
@@ -334,11 +340,6 @@ if __name__ == '__main__':
                       '[0: GradientDescent], [1:Adadelta], [2:Adagrad],'
                       '[3:Momentum], [4:Adam], [5:RMSProp]. (default:%d)'
                       %default_optimizer)
-  #parser.add_argument('-sl', '--softmax_loss',
-  #                    type=int, default=default_softmax_loss,
-  #                    nargs='?', choices=range(0, 3), help='Type of softmax'
-  #                    'function --> [0:full softmax], [1:sampled softmax],'
-  #                    '[nce loss]. (default:%d)'%default_softmax_loss)
   parser.add_argument('-rt', '--rnn_type', type=int,
                       default=default_rnn_type, nargs='?',
                       choices=range(0, 4), help='Type of rnn cell -->'
@@ -380,6 +381,8 @@ if __name__ == '__main__':
   parser.add_argument('-bi', '--bidirectional',
                       help='use bidirectional rnn instead of unidirectional '
                       'rnn during encoding', action='store_true')
+  parser.add_argument('-up', '--use_pretrained',
+                      help='use pretrained word embedding', action='store_true')
   parser.add_argument('-at', '--attention', type=int,
                       default=default_attention, nargs='?',
                       choices=range(0, 3), help='Type of attention -->'
@@ -391,30 +394,35 @@ if __name__ == '__main__':
                       default=default_beam_size, nargs='?',
                       help='Size of beam search.(default:%d)'%default_beam_size)
   parser.add_argument('-vf', '--vocab_file', type=str, nargs='?',
-                      default=default_vocab_file, help='List all train data. '
+                      default=default_vocab_file, help='Vocab file in .json'
+                      ' format with all voabularies '
                       '(default:%s)'%default_vocab_file)
   parser.add_argument('-tl', '--train_list',
                       type=str, default=default_train_list, nargs='?',
                       help='List all train data. (default:%s)'
                       %default_train_list)
-  parser.add_argument('-il', '--inference_list',
-                      type=str, default=default_inference_list, nargs='?',
-                      help='List all inference data (default:%s)'
-                      %default_inference_list)
+  parser.add_argument('-il', '--testing_list',
+                      type=str, default=default_testing_list, nargs='?',
+                      help='List all testing data (default:%s)'
+                      %default_testing_list)
   parser.add_argument('-of', '--output_filename',
                       type=str, default=default_output_filename, nargs='?',
                       help='Filename of the final prediction.'
                       '(default:%s)'%default_output_filename)
   args = parser.parse_args()
 
-  wordvec = np.load(args.embedding_file)
-  args.vocab_size, args.embed_dim = wordvec.shape
-
-  #calculate real epochs
   print('training with %.3f epochs!'%((args.batch_size*args.max_epoch)/1450))
-  vocab = open(args.vocab_file, 'r').read().splitlines()
-  dct = dict([[i, word] for i, word in enumerate(vocab)])
+
+
+  with open(args.vocab_file, 'r') as vocab_f:
+    dct = json.load(vocab_f)
+  args.vocab_size = len(dct)
   print('vocab size = %d'%args.vocab_size)
+  if args.use_pretrained:
+    wordvec = np.load(args.embedding_file)
+    assert len(dct) == wordvec.shape[0]
+
+  args.tot_train_num = len(open(args.train_list, 'r').read().splitlines())
 
   with tf.Graph().as_default():
     initializer = tf.random_uniform_initializer(-args.init_scale,
@@ -440,13 +448,14 @@ if __name__ == '__main__':
 
     config = tf.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 0.5
-    sv = tf.train.Supervisor(logdir='logs2/')
+    sv = tf.train.Supervisor(logdir='logs/')
     with sv.managed_session(config=config) as sess:
 
-      sess.run(train_model._embed_init,
-                feed_dict={train_model._embedding: wordvec})
-      sess.run(test_model._embed_init,
-                feed_dict={test_model._embedding: wordvec})
+      if args.use_pretrained:
+        sess.run(train_model._embed_init,
+                  feed_dict={train_model._embedding: wordvec})
+        sess.run(test_model._embed_init,
+                  feed_dict={test_model._embedding: wordvec})
 
       for i in range(1, args.max_epoch+1):
         train_perplexity = run_epoch(sess, train_model, train_args)
@@ -457,12 +466,16 @@ if __name__ == '__main__':
           if i%args.info_epoch == 0:
             print('Epoch: %d Valid Perplexity: %.4f'%(i, valid_perplexity))
             print('-'*80)
+
       results = []
       for i in range(50):
         results.extend(run_epoch(sess, test_model, test_args))
+      end_of_sent = [',', '!', '.', ':', ';', '(', ')']
+      results = [ result[:-1] if result[-1] in end_of_sent else result ]
       results = [ ' '.join(result) for result in results ]
       for result in results: print(result)
-  filelist = open(args.inference_list, 'r').read().splitlines()
+
+  filelist = open(args.testing_list, 'r').read().splitlines()
   filenames = [ fl for fl in filelist ]
   output = [{"caption": result, "id": filename}
          for result, filename in zip(results, filenames)]
