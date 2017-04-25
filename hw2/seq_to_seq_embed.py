@@ -64,7 +64,7 @@ class S2S(object):
     with tf.variable_scope('embedding'):
       if para.use_pretrained:
         W_E =\
-          tf.Variable(tf.constant(0, shape= [para.vocab_size, para.embed_dim]),
+          tf.Variable(tf.constant(0., shape= [para.vocab_size, para.embed_dim]),
                       trainable=False, name='W_E')
         self._embedding = tf.placeholder(tf.float32,
                                           [para.vocab_size, para.embed_dim])
@@ -421,6 +421,7 @@ if __name__ == '__main__':
   if args.use_pretrained:
     wordvec = np.load(args.embedding_file)
     assert len(dct) == wordvec.shape[0]
+    args.embed_dim = wordvec.shape[1]
 
   args.tot_train_num = len(open(args.train_list, 'r').read().splitlines())
 
