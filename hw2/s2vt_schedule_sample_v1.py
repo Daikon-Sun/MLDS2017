@@ -26,6 +26,7 @@ default_max_epoch             = 10000
 default_info_epoch            = 10
 default_testing_video_num     = 50     # number of testing videos
 default_video_step            = 4
+default_schedule_sample_porb  = 0.7
 default_learning_rate         = 0.001
 default_learning_rate_decay_factor = 1
 
@@ -159,6 +160,10 @@ class S2VT(object):
       caption_embed = tf.nn.embedding_lookup(word_embedding_w, target_captions_input)
       layer_2_pad_and_embed = tf.concat([layer_2_padding, caption_embed], 1)
       layer_2_inputs = tf.concat([layer_2_pad_and_embed, layer_1_outputs], 2)
+      layer_1_outputs = tf.transpose(layer_1_outputs, perm=[1,0,2])
+      layer_1_outputs_ta = tf.TensorArray(dtype=tf.float32,
+                                          size=para.video_frame_num//para.video_step+max_len-1)
+      layer_1_outputs_ta = layer_1_outputs_ta.unstack(layer_1_outputs)
     else:
       layer_2_inputs = layer_1_outputs
 
@@ -166,9 +171,37 @@ class S2VT(object):
     layer_2_inputs_ta = tf.TensorArray(dtype=tf.float32,
                                        size=para.video_frame_num//para.video_step+max_len-1)
     layer_2_inputs_ta = layer_2_inputs_ta.unstack(layer_2_inputs)
+    
+    rand = tf.random_uniform([para.video_frame_num//para.video_step+max_len-1], dtype=tf.float32)
+    rand_ta = tf.TensorArray(dtype=tf.float32,
+                             size=para.video_frame_num//para.video_step+max_len-1)
+    rand_ta = rand_ta.unstack(rand)
+    schedule_sample_porb = tf.constant(para.schedule_sample_porb, dtype=tf.float32, shape=[1,1])
 
     if self.is_train():
       def layer_2_loop_fn(time, cell_output, cell_state, loop_state):
+        def input_fn():
+          def normal_feed_in():
+            return layer_2_inputs_ta.read(time)
+          def schedule_sample():
+            if cell_output is None:
+              return tf.zeros([para.batch_size, para.embedding_dimension+para.hidden_units], dtype=tf.float32)
+            def feed_previous():
+              output_logit = tf.matmul(cell_output, word_decoding_w)
+              prediction = tf.argmax(output_logit, axis=1)
+              prediction_embed = tf.nn.embedding_lookup(word_embedding_w, prediction)
+              next_input = tf.concat([prediction_embed, layer_1_outputs_ta.read(time)], 1)
+              return next_input
+            sample = (schedule_sample_porb[0,0] < rand_ta.read(time))
+            sample = tf.reduce_all(sample)
+            return tf.cond(sample, feed_previous, normal_feed_in)
+          start_decoding = (time >= video_frame_num+1) # first input should keep to be <BOS>
+          start_decoding = tf.reduce_all(start_decoding)
+          return tf.cond(start_decoding, schedule_sample, normal_feed_in)
+
+        def zeros():
+          return tf.zeros([para.batch_size, para.embedding_dimension+para.hidden_units], dtype=tf.float32)
+
         emit_output = cell_output
         if cell_output is None: # time == 0
           next_cell_state = layer_2_cell.zero_state(para.batch_size, dtype=tf.float32)
@@ -176,10 +209,7 @@ class S2VT(object):
           next_cell_state = cell_state
         is_finished = (time >= sequence_length)
         finished = tf.reduce_all(is_finished)
-        next_input = tf.cond(
-          finished,
-          lambda: tf.zeros([para.batch_size, para.embedding_dimension+para.hidden_units], dtype=tf.float32),
-          lambda: layer_2_inputs_ta.read(time))
+        next_input = tf.cond(finished, zeros, input_fn)#layer_2_inputs_ta.read(time))
         return (is_finished, next_input, next_cell_state, emit_output, loop_state)
     else:
       def layer_2_loop_fn(time, cell_output, cell_state, loop_state):
@@ -374,6 +404,9 @@ if __name__ == '__main__':
   argparser.add_argument('-vs', '--video_step',
     type=int, default=default_video_step,
     help='Choose a frame per step. (default:%d)' %default_video_step)
+  argparser.add_argument('-ss', '--schedule_sample_porb',
+    type=float, default=default_schedule_sample_porb,
+    help='scheduled sampling probability. (default:%d)' %default_schedule_sample_porb)
   args = argparser.parse_args()
 
 
@@ -406,7 +439,7 @@ if __name__ == '__main__':
 
     config = tf.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 1.0
-    sv = tf.train.Supervisor(logdir='logs_jason/')
+    sv = tf.train.Supervisor(logdir='logs_schedule_sample/')
     with sv.managed_session(config=config) as sess:
       # training
       for i in range(1, args.max_epoch + 1):
