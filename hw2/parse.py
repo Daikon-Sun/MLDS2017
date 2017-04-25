@@ -74,7 +74,7 @@ if __name__ == '__main__':
   with open(args.training_label, 'r') as label_json:
     labels = json.load(label_json)
     for i, label in tqdm(enumerate(labels)):
-      out_name = args.input_dir+'/'+label['id']+'.tfr'
+      out_name = args.output_dir+'/'+label['id']+'.tfr'
       video = np.load(args.input_dir+'/'+label['id']+'.npy')
       video = video.reshape((-1, 1))
       writer = tf.python_io.TFRecordWriter(out_name)
