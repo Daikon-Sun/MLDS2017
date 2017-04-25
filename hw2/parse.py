@@ -99,7 +99,7 @@ if __name__ == '__main__':
     for file_name in tqdm(testing_id.read().splitlines()):
       video_array = np.load(args.testing_input_dir+'/'+file_name+'.npy')
       video_array = np.reshape(video_array, 80*4096)
-      out_file_name = args.testing_input_dir+'/'+file_name+'.tfr'
+      out_file_name = args.testing_output_dir+'/'+file_name+'.tfr'
       writer = tf.python_io.TFRecordWriter(out_file_name)
       example = tf.train.Example(
           features=tf.train.Features(
