@@ -150,7 +150,7 @@ class S2S(object):
         if para.scheduled_sampling and cell_output is not None:
           epsilon = tf.cast(
             1-(global_step//(para.tot_train_num//para.batch_size+1) /
-               para.max_epoch, tf.float32))
+               para.max_epoch), tf.float32)
           cell_input = tf.cond(tf.less(tf.random_uniform([1]), epsilon)[0],
                                lambda: cell_input,
                                lambda: tf.gather(W_E, tf.argmax(
