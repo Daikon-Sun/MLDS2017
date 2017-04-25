@@ -1,14 +1,21 @@
-import os, sys, argparse, json
+#!/usr/bin/python3
+import os, sys, argparse, json, re
 import tensorflow as tf
 import numpy as np
 from tqdm import tqdm
-from embedding import normalized
+from gensim.models import word2vec
+
+def normalize(sent):
+  s = sent.lower()
+  for deli in ['\'','.','?','!',',',';',':','\"', '(', ')']:
+    s = re.sub('['+deli+']', ' '+deli, s)
+  return '<bos> ' + ' '.join(s.split()) + ' <eos>'
 
 if __name__ == '__main__':
   argparser = argparse.ArgumentParser(description='Parsing given datas '
       'into the format of TFRecorder file.')
-  argparser.add_argument('-v', '--vocab_file', type=str, default='vocab.txt',
-      help='output dictionary of the table for vocabs')
+  argparser.add_argument('-v', '--vocab_file', type=str, default='vocab.json',
+      help='output dictionary of the table for vocabs in .json format')
   argparser.add_argument('-l','--training_label', type=str,
       default='MLDS_hw2_data/training_label.json',
   	  help='training label with video id and captions in .json format')
@@ -17,9 +24,9 @@ if __name__ == '__main__':
       help='the input directory of training .npy files')
   argparser.add_argument('-o', '--output_dir', default='train_tfrdata',
       type=str, help='the output directory of training TFRecorder files')
-  argparser.add_argument('-ti', '--testing_id', type=str,
+  argparser.add_argument('-tid', '--testing_id', type=str,
       default='MLDS_hw2_data/testing_id.txt', help='testing id of testing data')
-  argparser.add_argument('-fp', '--feature_path', type=str,
+  argparser.add_argument('-ti', '--testing_input_dir', type=str,
       default='MLDS_hw2_data/testing_data/feat',
       help='the input directory of testing .npy files')
   argparser.add_argument('-to', '--testing_output_dir', default='test_tfrdata',
@@ -30,91 +37,75 @@ if __name__ == '__main__':
   argparser.add_argument('-s', '--short',
       help='select single caption among captions for each video',
       action='store_true')
+  argparser.add_argument('-d', '--dimension',
+        type=int, default=100,
+        help='The embedding words will be a DIMENSION-dimension '
+             'real value vector.'
+             '(default: %(default)s)',)
+  argparser.add_argument('-ov', '--output_vector_file',
+        type=str, default='vector_100d.npy',
+        help='OUTPUT_VECTOR_FILE is the file storing embedding word '
+             'vector in the order of embedding in the numpy array format.'
+             '(default: %(default)s)',)
   args = argparser.parse_args()
 
-  # convert only testing data if args.convert == true
-  if args.convert:
-    if not os.path.exists(args.testing_output_dir):
-      os.makedirs(args.testing_output_dir)
-    sys.stderr.write('start converting testing data into TFR format...\n')
-    with open(args.testing_id) as testing_id:
-      for file_name in tqdm(testing_id.read().splitlines()):
-        video_array = np.load(args.feature_path+'/'+file_name+'.npy')
-        video_array_flat = np.reshape(video_array, 80*4096)
-        out_file_name = args.testing_output_dir+'/'+file_name+'.tfr'
-        writer = tf.python_io.TFRecordWriter(out_file_name)
-        example = tf.train.Example(
-            features=tf.train.Features(
-              feature={
-                'video': tf.train.Feature(
-                  float_list=tf.train.FloatList(value=video_array_flat))}))
-        serialized = example.SerializeToString()
-        writer.write(serialized)
-        writer.close()
-    exit()
+  with open(args.training_label, 'r') as label_json:
+    labels = json.load(label_json)
+    captions = [ [ normalize(sent.lower()).split()[1:-1]
+                  for sent in label['caption'] ] for label in labels ]
+    sents = [ sent for caption in captions for sent in caption ]
+
+    vocabs = set([ word for sent in sents for word in sent ])
+    vocabs = ['<pad>', '<unk>', '<bos>', '<eos>'] + list(vocabs)
+    dct = dict([ (word, i) for i, word in enumerate(vocabs)])
+
+    if args.dimension > 0:
+      model = word2vec.Word2Vec(sents, size=args.dimension, window=5,
+                                min_count=0, workers=4)
+      vecs = [ model.wv[word] if word in model else np.zeros(args.dimension)
+              for word in vocabs ]
+      np.save(args.output_vector_file, vecs)
+
+    with open(args.vocab_file, 'w') as vocab_file:
+      json.dump(dct, vocab_file, indent=2, separators=(',', ':'))
+
   if not os.path.exists(args.output_dir):
     os.makedirs(args.output_dir)
-  # default value for special vocabs
-  PAD = 0
-  UNK = 1
-  BOS = 2
-  EOS = 3
-
-  # dictionary initialize
-  vocab_table = dict() # word to int
-  vocab_table['<PAD>'] = PAD
-  vocab_table['<UNK>'] = UNK
-  vocab_table['<BOS>'] = BOS
-  vocab_table['<EOS>'] = EOS
-  index = 4
-
-  # reverse dictionary initialize
-  reverse_vocab_table = dict() # int to word
-  reverse_vocab_table[0] = '<PAD>'
-  reverse_vocab_table[1] = '<UNK>'
-  reverse_vocab_table[2] = '<BOS>'
-  reverse_vocab_table[3] = '<EOS>'
-
-  with open(args.training_label) as training_label_json:
-    training_label = json.load(training_label_json)
-    sys.stderr.write('start building vocab dictionary...\n')
-    for i in tqdm(range(len(training_label))):
-      for j in range(len(training_label[i]['caption'])):
-        words = normalized(training_label[i]['caption'][j].lower()).split()
-        for w in words:
-          if w in vocab_table: continue;
-          else:
-            vocab_table[w] = index
-            reverse_vocab_table[index] = w
-            index += 1
-    with open(args.vocab_file, 'w') as reverse_vocab_file:
-      json.dump(reverse_vocab_table, reverse_vocab_file)
-
-    sys.stderr.write('start converting training data into TFR format...\n')
-    for i in tqdm(range(len(training_label))):
-      video_array = np.load(args.input_dir+'/'+training_label[i]['id']+'.npy')
-      video_array_flat = np.reshape(video_array, 80*4096)
-      out_file_name = args.output_dir+'/'+training_label[i]['id']+'.tfr'
-      writer = tf.python_io.TFRecordWriter(out_file_name)
-      for j in range(len(training_label[i]['caption'])):
-        words = normalized(training_label[i]['caption'][j].lower()).split()
-        words_id = []
-        counter = 1
-        for w in words:
-          words_id.append(UNK if w not in vocab_table else vocab_table[w])
-          counter += 1
-        counter += 1
-        caption_length = counter
+  with open(args.training_label, 'r') as label_json:
+    labels = json.load(label_json)
+    for i, label in tqdm(enumerate(labels)):
+      out_name = args.input_dir+'/'+label['id']+'.tfr'
+      video = np.load(args.input_dir+'/'+label['id']+'.npy')
+      video = video.reshape((-1, 1))
+      writer = tf.python_io.TFRecordWriter(out_name)
+      for j, sent in enumerate(label['caption']):
+        word_ids = [ dct[word] for word in normalize(sent).split() ]
         example = tf.train.Example(
           features=tf.train.Features(
             feature={
               'video': tf.train.Feature(
-                float_list=tf.train.FloatList(value=video_array_flat)),
+                float_list=tf.train.FloatList(value=video)),
               'caption': tf.train.Feature(
-                int64_list=tf.train.Int64List(value=words_id))}))
+                int64_list=tf.train.Int64List(value=word_ids))}))
         serialized = example.SerializeToString()
         writer.write(serialized)
-
         if args.short: break
+      writer.close()
 
+  if not os.path.exists(args.testing_output_dir):
+    os.makedirs(args.testing_output_dir)
+  sys.stderr.write('start converting testing data into TFR format...\n')
+  with open(args.testing_id) as testing_id:
+    for file_name in tqdm(testing_id.read().splitlines()):
+      video_array = np.load(args.testing_input_dir+'/'+file_name+'.npy')
+      video_array = np.reshape(video_array, 80*4096)
+      out_file_name = args.testing_input_dir+'/'+file_name+'.tfr'
+      writer = tf.python_io.TFRecordWriter(out_file_name)
+      example = tf.train.Example(
+          features=tf.train.Features(
+            feature={
+              'video': tf.train.Feature(
+                float_list=tf.train.FloatList(value=video_array))}))
+      serialized = example.SerializeToString()
+      writer.write(serialized)
       writer.close()

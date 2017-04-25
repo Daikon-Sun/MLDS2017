@@ -41,8 +41,8 @@ class S2S(object):
     encoder_cell =\
       tf.contrib.rnn.MultiRNNCell([rnn_cell(1) for _ in range(para.layer_num)])
     if para.bidirectional:
-      b_encoder_cell =\
-        tf.contrib.rnn.MultiRNNCell([rnn_cell(1) for _ in range(para.layer_num)])
+      b_encoder_cell = tf.contrib.rnn.MultiRNNCell([rnn_cell(1) for _ in
+                                                    range(para.layer_num)])
 
     #feed in data in batches
     if not self.is_test():
@@ -62,8 +62,8 @@ class S2S(object):
                          batch_size=para.batch_size, dynamic_pad=True)
     v_lens = tf.to_int32(v_lens)
     with tf.variable_scope('embedding'):
-      W_E = tf.Variable(tf.constant(0.0,
-           shape=[para.vocab_size, para.embed_dim]), trainable=False, name='W_E')
+      W_E = tf.Variable(tf.constant(0.0, shape=
+                [para.vocab_size, para.embed_dim]), trainable=False, name='W_E')
       self._embedding = tf.placeholder(tf.float32,
                                         [para.vocab_size, para.embed_dim])
       self._embed_init = W_E.assign(self._embedding)
@@ -267,27 +267,24 @@ if __name__ == '__main__':
   default_embed_dim = 512
   default_embedding_file = 'vector_100d.npy'
   default_hidden_size = 256
-  default_inference_list = 'inference_list.txt'
+  default_inference_list = 'testing_list'
   default_info_epoch = 1
   default_init_scale = 0.005
   default_keep_prob = 0.7
   default_layer_num = 2
   default_learning_rate = 0.001
   default_rnn_type = 2
-  default_train_list = 'train_list.txt'
+  default_train_list = 'training_list'
   default_max_grad_norm = 5
   default_max_epoch = 10000
   default_num_sampled = 2000
   default_optimizer = 4
   default_output_filename = 'output.json'
-  #default_softmax_loss = 0
   default_video_dim = 4096
   default_train_num = 1450
   default_video_step = 5
-  # default_vocab_file = 'train_tfrdata/vocab.txt'
-  default_vocab_file = 'MLDS_hw2_data/training_data/jason_reverse_vocab.txt'
+  default_vocab_file = 'vocab.json'
   default_attention = 0
-  #default_wordvec_src = 3
   optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,
                 tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,
                 tf.train.AdamOptimizer, tf.train.RMSPropOptimizer]
