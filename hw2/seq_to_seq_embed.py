@@ -273,6 +273,7 @@ if __name__ == '__main__':
   default_embed_dim = 512
   default_embedding_file = 'vector_100d.npy'
   default_hidden_size = 256
+  default_testing_id = 'MLDS_hw2_data/testing_id.txt'
   default_testing_list = 'testing_list'
   default_info_epoch = 1
   default_init_scale = 0.005
@@ -397,6 +398,9 @@ if __name__ == '__main__':
                       default=default_vocab_file, help='Vocab file in .json'
                       ' format with all voabularies '
                       '(default:%s)'%default_vocab_file)
+  parser.add_argument('-ti', '--testing_id', type=str, nargs='?',
+                      default=default_testing_id, help='testing ids'
+                      '(default:%s)'%default_testing_id)
   parser.add_argument('-tl', '--train_list',
                       type=str, default=default_train_list, nargs='?',
                       help='List all train data. (default:%s)'
@@ -472,13 +476,13 @@ if __name__ == '__main__':
       for i in range(50):
         results.extend(run_epoch(sess, test_model, test_args))
       end_of_sent = [',', '!', '.', ':', ';', '(', ')']
-      results = [ result[:-1] if result[-1] in end_of_sent else result ]
+      results = [ result[:-1] if result[-1] in end_of_sent else result
+                 for result in results ]
       results = [ ' '.join(result) for result in results ]
       for result in results: print(result)
 
-  filelist = open(args.testing_list, 'r').read().splitlines()
-  filenames = [ fl for fl in filelist ]
-  output = [{"caption": result, "id": filename}
+  filenames = open(args.testing_id, 'r').read().splitlines()
+  output = [{'caption': result, 'id': filename}
          for result, filename in zip(results, filenames)]
   with open(args.output_filename, 'w') as f:
     json.dump(output, f)

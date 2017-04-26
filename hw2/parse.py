@@ -66,8 +66,9 @@ if __name__ == '__main__':
               for word in vocabs ]
       np.save(args.output_vector_file, vecs)
 
+    rev_dct = dict([ (i, word) for i, word in dct.items()])
     with open(args.vocab_file, 'w') as vocab_file:
-      json.dump(dct, vocab_file, indent=2, separators=(',', ':'))
+      json.dump(rev_dct, vocab_file, indent=2, separators=(',', ':'))
 
   if not os.path.exists(args.output_dir):
     os.makedirs(args.output_dir)
