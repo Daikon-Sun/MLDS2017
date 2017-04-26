@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 import os, sys, argparse, json, re
-#import tensorflow as tf
+import tensorflow as tf
 import numpy as np
-#from tqdm import tqdm
-#from gensim.models import word2vec
+from tqdm import tqdm
+from gensim.models import word2vec
 
 def normalize(sent):
   s = sent.lower()
@@ -69,7 +69,6 @@ if __name__ == '__main__':
     rev_dct = dict([(i, word) for word, i in dct.items()])
     with open(args.vocab_file, 'w') as vocab_file:
       json.dump(rev_dct, vocab_file, indent=2, separators=(',', ':'))
-    exit()
 
   if not os.path.exists(args.output_dir):
     os.makedirs(args.output_dir)
