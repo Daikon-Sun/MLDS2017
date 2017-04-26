@@ -274,6 +274,7 @@ if __name__ == '__main__':
   default_keep_prob = 0.7
   default_layer_num = 2
   default_learning_rate = 0.001
+  default_log_dir = 'logs'
   default_rnn_type = 2
   default_train_list = 'training_list'
   default_max_grad_norm = 5
@@ -398,6 +399,9 @@ if __name__ == '__main__':
                       default=default_vocab_file, help='Vocab file in .json'
                       ' format with all voabularies '
                       '(default:%s)'%default_vocab_file)
+  parser.add_argument('-ld', '--log_dir', type=str, nargs='?',
+                      default=default_log_dir, help='log directory'
+                      '(default:%s)'%default_log_dir)
   parser.add_argument('-ti', '--testing_id', type=str, nargs='?',
                       default=default_testing_id, help='testing ids'
                       '(default:%s)'%default_testing_id)
@@ -452,8 +456,8 @@ if __name__ == '__main__':
         test_model = S2S(para=test_args)
 
     config = tf.ConfigProto()
-    config.gpu_options.per_process_gpu_memory_fraction = 0.5
-    sv = tf.train.Supervisor(logdir='logs/')
+    config.gpu_options.per_process_gpu_memory_fraction = 1.0
+    sv = tf.train.Supervisor(logdir=args.logdir)
     with sv.managed_session(config=config) as sess:
 
       if args.use_pretrained:
