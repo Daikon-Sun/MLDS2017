@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 import os, sys, argparse, json, re
-import tensorflow as tf
+#import tensorflow as tf
 import numpy as np
-from tqdm import tqdm
-from gensim.models import word2vec
+#from tqdm import tqdm
+#from gensim.models import word2vec
 
 def normalize(sent):
   s = sent.lower()
@@ -38,7 +38,7 @@ if __name__ == '__main__':
       help='select single caption among captions for each video',
       action='store_true')
   argparser.add_argument('-d', '--dimension',
-        type=int, default=100,
+        type=int, default=0,
         help='The embedding words will be a DIMENSION-dimension '
              'real value vector.'
              '(default: %(default)s)',)
@@ -66,9 +66,10 @@ if __name__ == '__main__':
               for word in vocabs ]
       np.save(args.output_vector_file, vecs)
 
-    rev_dct = dict([ (i, word) for i, word in dct.items()])
+    rev_dct = dict([(i, word) for word, i in dct.items()])
     with open(args.vocab_file, 'w') as vocab_file:
       json.dump(rev_dct, vocab_file, indent=2, separators=(',', ':'))
+    exit()
 
   if not os.path.exists(args.output_dir):
     os.makedirs(args.output_dir)
