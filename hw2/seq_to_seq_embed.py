@@ -457,7 +457,7 @@ if __name__ == '__main__':
 
     config = tf.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 1.0
-    sv = tf.train.Supervisor(logdir=args.logdir)
+    sv = tf.train.Supervisor(logdir=args.log_dir)
     with sv.managed_session(config=config) as sess:
 
       if args.use_pretrained:
