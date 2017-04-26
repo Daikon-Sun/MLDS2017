@@ -424,6 +424,8 @@ if __name__ == '__main__':
 
   with open(args.vocab_file, 'r') as vocab_f:
     dct = json.load(vocab_f)
+    dct = dict([[int(k), v] for k, v in dct.items()])
+
   args.vocab_size = len(dct)
   print('vocab size = %d'%args.vocab_size)
   if args.use_pretrained:
