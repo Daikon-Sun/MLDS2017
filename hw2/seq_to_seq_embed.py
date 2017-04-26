@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 import os, copy, csv, sys, json, argparse
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.rnn import LSTMStateTuple
@@ -204,7 +203,7 @@ class S2S(object):
     '''get one example from TFRecorder file using tf default queue runner'''
     if self.is_test():
       filelist = open(para.testing_id, 'r').read().splitlines()
-      filenames = [para.testing_dir+'/'+fl for fl in filelist]
+      filenames = [para.testing_dir+'/'+fl+'.tfr' for fl in filelist]
       f_queue = tf.train.string_input_producer(filenames, shuffle=False)
     else:
       filelist = open(para.train_list, 'r').read().splitlines()
@@ -274,7 +273,7 @@ if __name__ == '__main__':
   default_embedding_file = 'vector_100d.npy'
   default_hidden_size = 256
   default_testing_id = 'MLDS_hw2_data/testing_id.txt'
-  default_testing_dir = 'MLDS_hw2_data/testing_data/feat'
+  default_testing_dir = 'test_tfrdata'
   default_info_epoch = 1
   default_init_scale = 0.005
   default_keep_prob = 0.7
@@ -408,7 +407,7 @@ if __name__ == '__main__':
   parser.add_argument('-il', '--testing_dir',
                       type=str, default=default_testing_dir, nargs='?',
                       help='Directory containing all testing data (default:%s)'
-                      %default_testing_di)
+                      %default_testing_id)
   parser.add_argument('-of', '--output_filename',
                       type=str, default=default_output_filename, nargs='?',
                       help='Filename of the final prediction.'
