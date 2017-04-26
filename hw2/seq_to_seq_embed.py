@@ -27,22 +27,18 @@ class S2S(object):
     elif para.rnn_type == 3:#GRU
       def unit_cell(fac):
         return tf.contrib.rnn.GRUCell(para.hidden_size * fac)
-
     rnn_cell = unit_cell
-
     #dropout layer
     if not self.is_test() and para.keep_prob < 1:
       def rnn_cell(fac):
         return tf.contrib.rnn.DropoutWrapper(
             unit_cell(fac), output_keep_prob=para.keep_prob)
-
     #multi-layer rnn
     encoder_cell =\
       tf.contrib.rnn.MultiRNNCell([rnn_cell(1) for _ in range(para.layer_num)])
     if para.bidirectional:
       b_encoder_cell = tf.contrib.rnn.MultiRNNCell([rnn_cell(1) for _ in
                                                     range(para.layer_num)])
-
     #feed in data in batches
     if not self.is_test():
       video, caption, v_len, c_len = self.get_single_example(para)
@@ -63,20 +59,20 @@ class S2S(object):
     with tf.variable_scope('embedding'):
       if para.use_pretrained:
         W_E =\
-          tf.Variable(tf.constant(0., shape= [para.vocab_size, para.embed_dim]),
+          tf.Variable(tf.constant(0., shape= [para.vocab_size, para.w_emb_dim]),
                       trainable=False, name='W_E')
         self._embedding = tf.placeholder(tf.float32,
-                                          [para.vocab_size, para.embed_dim])
+                                          [para.vocab_size, para.w_emb_dim])
         self._embed_init = W_E.assign(self._embedding)
       else:
-        W_E = tf.get_variable('W_E', [para.vocab_size, para.embed_dim],
+        W_E = tf.get_variable('W_E', [para.vocab_size, para.w_emb_dim],
                               dtype=tf.float32)
 
     if not self.is_test():
       decoder_in_embed = tf.nn.embedding_lookup(W_E, decoder_in)
 
-    if para.embed_dim < para.video_dim:
-      inputs = fully_connected(videos, para.embed_dim)
+    if para.v_emb_dim < para.video_dim:
+      inputs = fully_connected(videos, para.v_emb_dim)
     else: inputs = videos
 
     if not self.is_test() and para.keep_prob < 1:
@@ -269,7 +265,6 @@ if __name__ == '__main__':
   #default values (in alphabetic order)
   default_batch_size = 145
   default_beam_size = 1
-  default_embed_dim = 512
   default_embedding_file = 'vector_100d.npy'
   default_hidden_size = 256
   default_testing_id = 'MLDS_hw2_data/testing_id.txt'
@@ -286,10 +281,12 @@ if __name__ == '__main__':
   default_num_sampled = 2000
   default_optimizer = 4
   default_output_filename = 'output.json'
-  default_video_dim = 4096
   default_train_num = 1450
+  default_video_dim = 4096
   default_video_step = 5
   default_vocab_file = 'vocab.json'
+  default_v_emb_dim = 4096
+  default_w_emb_dim = 256
   default_attention = 1
   optimizers = [tf.train.GradientDescentOptimizer, tf.train.AdadeltaOptimizer,
                 tf.train.AdagradOptimizer, tf.train.MomentumOptimizer,
@@ -305,14 +302,18 @@ if __name__ == '__main__':
   ##argument parser
   parser = argparse.ArgumentParser(description=
                                    'seq2seq for video caption generation')
-  parser.add_argument('-ed', '--embed_dim',
-                      type=int, default=default_embed_dim,
-                      nargs='?', help='Embedding dimension of vocabularies. '
-                      '(default:%d)'%default_embed_dim)
-  parser.add_argument('-edf', '--embedding_file',
-                      type=str, default=default_embedding_file,
-                      nargs='?', help='Pretrained embedding file.'
-                      '(default:%s)'%default_embedding_file)
+  parser.add_argument('-ved', '--v_emb_dim', type=int,
+                      default=default_v_emb_dim,
+                      nargs='?', help='Embedding dimension of videos. '
+                      '(default:%d)'%default_v_emb_dim)
+  parser.add_argument('-wed', '--w_emb_dim', type=int,
+                      default=default_w_emb_dim,
+                      nargs='?', help='Embedding dimension of words. '
+                      '(default:%d)'%default_w_emb_dim)
+  parser.add_argument('-edf', '--embedding_file', type=str, nargs='?',
+                      default=default_embedding_file,
+                      help='Pretrained embedding file. (default:%s)'
+                      %default_embedding_file)
   parser.add_argument('-vs', '--video_step',
                       type=int, default=default_video_step,
                       nargs='?', help='Choose a frame per step. (default:%d)'
@@ -424,7 +425,7 @@ if __name__ == '__main__':
   if args.use_pretrained:
     wordvec = np.load(args.embedding_file)
     assert len(dct) == wordvec.shape[0]
-    args.embed_dim = wordvec.shape[1]
+    args.w_emb_dim = wordvec.shape[1]
 
   args.tot_train_num = len(open(args.train_list, 'r').read().splitlines())
 
