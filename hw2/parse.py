@@ -79,18 +79,38 @@ if __name__ == '__main__':
       video = np.load(args.input_dir+'/'+label['id']+'.npy')
       video = video.reshape((-1, 1))
       writer = tf.python_io.TFRecordWriter(out_name)
-      for j, sent in enumerate(label['caption']):
-        word_ids = [ dct[word] for word in normalize(sent).split() ]
-        example = tf.train.Example(
-          features=tf.train.Features(
-            feature={
-              'video': tf.train.Feature(
-                float_list=tf.train.FloatList(value=video)),
-              'caption': tf.train.Feature(
-                int64_list=tf.train.Int64List(value=word_ids))}))
-        serialized = example.SerializeToString()
-        writer.write(serialized)
-        if args.short: break
+      if args.short:
+        words_len = []
+        for j, sent in enumerate(label['caption']):
+          words = normalize(sent).split()
+          words_len.extend([len(words)])
+        words_len.sort()
+        median = words_len[len(words_len)//2]
+        for j, sent in enumerate(label['caption']):
+          if len(normalize(sent).split()) == median:
+            word_ids = [ dct[word] for word in normalize(sent).split() ]
+            example = tf.train.Example(
+              features=tf.train.Features(
+                feature={
+                  'video': tf.train.Feature(
+                    float_list=tf.train.FloatList(value=video)),
+                  'caption': tf.train.Feature(
+                    int64_list=tf.train.Int64List(value=word_ids))}))
+            serialized = example.SerializeToString()
+            writer.write(serialized)
+            break
+      else:
+        for j, sent in enumerate(label['caption']):
+          word_ids = [ dct[word] for word in normalize(sent).split() ]
+          example = tf.train.Example(
+            features=tf.train.Features(
+              feature={
+                'video': tf.train.Feature(
+                  float_list=tf.train.FloatList(value=video)),
+                'caption': tf.train.Feature(
+                  int64_list=tf.train.Int64List(value=word_ids))}))
+          serialized = example.SerializeToString()
+          writer.write(serialized)
       writer.close()
 
   if not os.path.exists(args.testing_output_dir):
