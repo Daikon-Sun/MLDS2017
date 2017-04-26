@@ -203,8 +203,8 @@ class S2S(object):
   def get_single_example(self, para):
     '''get one example from TFRecorder file using tf default queue runner'''
     if self.is_test():
-      filelist = open(para.testing_list, 'r').read().splitlines()
-      filenames = [fl for fl in filelist]
+      filelist = open(para.testing_id, 'r').read().splitlines()
+      filenames = [para.testing_dir+'/'+fl for fl in filelist]
       f_queue = tf.train.string_input_producer(filenames, shuffle=False)
     else:
       filelist = open(para.train_list, 'r').read().splitlines()
@@ -274,7 +274,7 @@ if __name__ == '__main__':
   default_embedding_file = 'vector_100d.npy'
   default_hidden_size = 256
   default_testing_id = 'MLDS_hw2_data/testing_id.txt'
-  default_testing_list = 'testing_list'
+  default_testing_dir = 'MLDS_hw2_data/testing_data/feat'
   default_info_epoch = 1
   default_init_scale = 0.005
   default_keep_prob = 0.7
@@ -405,10 +405,10 @@ if __name__ == '__main__':
                       type=str, default=default_train_list, nargs='?',
                       help='List all train data. (default:%s)'
                       %default_train_list)
-  parser.add_argument('-il', '--testing_list',
-                      type=str, default=default_testing_list, nargs='?',
-                      help='List all testing data (default:%s)'
-                      %default_testing_list)
+  parser.add_argument('-il', '--testing_dir',
+                      type=str, default=default_testing_dir, nargs='?',
+                      help='Directory containing all testing data (default:%s)'
+                      %default_testing_di)
   parser.add_argument('-of', '--output_filename',
                       type=str, default=default_output_filename, nargs='?',
                       help='Filename of the final prediction.'
