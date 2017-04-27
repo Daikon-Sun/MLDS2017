@@ -356,7 +356,13 @@ S2VT 的模型中看到比 seq2seq 更好的結果，而最終 S2VT 模型在 bl
   playing a guitar，當 perplexity 下降到 2 $\sim$ 3 左右時，預測出的句子有更高的
   多樣性，但當 perplexity 繼續往下掉到 1 時，許多句子反而會預測出錯誤的結果，如
   下表右下的例子。可見，perplexity 和預測的結果有一定的一致性，但 perplexity 過低
-  反而代表出現 overfitting。 \\
+  反而代表出現 overfitting。 
+\item 對於不同的 embedding size， 雖然在 1000 個 epoch 以後四種 embedding size 的
+  perplexity 都會降至 50 左右，但是由 Figure~\ref{fig:esz} 中可以看出，四種 embedding size 的 
+  perplexity 都會停留在約 160 一段時間，embedding size 為 4096 的 perplexity
+  大約在 200 左右就會繼續下降，而 embedding size 為 2048 的 perplexity 大約在
+  240 左右才會繼續下降，embedding size 為 1024 和 512 則在 perplexity 為 160 
+  左右停留更久，分別是 420 和 700 個 epoch 之後才有下降的趨勢.
 \end{enumerate}
 \begin{tabular}{|c|c|l|l|l|}
   \hline
@@ -398,15 +404,20 @@ S2VT 的模型中看到比 seq2seq 更好的結果，而最終 S2VT 模型在 bl
 % End of Experiment
   \begin{figure}[!htb]
     \centering
-    \minipage{0.5\textwidth}
-    \includegraphics[scale=0.5]{jason.png}
+    \minipage{0.3\textwidth}
+    \includegraphics[scale=0.35]{jason.png}
     \caption{S2VT 結果}
     \label{fig:jason}
    \endminipage \hfill
-    \minipage{0.5\textwidth}
-    \includegraphics[scale=0.5]{score.png}
+    \minipage{0.36\textwidth}
+    \includegraphics[scale=0.36]{score.png}
     \caption{preplexity 與 score 的關聯}
     \label{fig:score}
+   \endminipage \hfill
+    \minipage{0.3\textwidth}
+    \includegraphics[scale=0.35]{esz.png}
+    \caption{不同 embedding size}
+    \label{fig:esz}
    \endminipage
   \end{figure}
 
