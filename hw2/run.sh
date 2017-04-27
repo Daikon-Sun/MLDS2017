@@ -1,4 +1,4 @@
-git clone https://Daikon-Sun@gitlab.com/Daikon-Sun/MLDS_hw2_basic_model.git
+git clone https://Daikon-Sun@gitlab.com/Daikon-Sun/MLDS_hw2_best_model.git
 cd MLDS_hw2_basic_model
 if [[ "$1" = /* ]]
   then tid=$1 
