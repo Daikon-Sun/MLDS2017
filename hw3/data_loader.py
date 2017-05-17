@@ -65,14 +65,17 @@ def save_caption_vectors_flowers(data_set, data_dir, tag_name):
 
 def main():
   parser = argparse.ArgumentParser()
-  parser.add_argument('--data_dir', type=str, default='hw3_data',
+  parser.add_argument('--data_dir','-dd',type=str, default='hw3_data',
                        help='Data directory')
-  parser.add_argument('--data_set', type=str, default='faces',
+  parser.add_argument('--data_set','-ds',type=str, default='faces',
                        help='Data Set : faces')
-  parser.add_argument('--tag_name', type=str, default='tags_clean.csv',
+  parser.add_argument('--tag_name','-tn',type=str, default='tags_clean.csv',
                        help='tags')
+  parser.add_argument('--vector','-v',type=int, default='skip-thought vector',
+                       help='word vector to use, options: 1. skip-thought vector, combine-skip 2. skip-thought vector, uni-skip 3. skip-thought vector, bi-skip,4. glove vector dimensoin = 300,5. one hot vector')
+  parser.add_argument('--gan type','-gt',type=int, default='dcgan',
+          help='type of conditional gan to use, options: 1.conditional dcgan, 2.conditional lsgan, 3.conditional gan, 4.conditional wgan')
   args = parser.parse_args()
-
   save_caption_vectors_flowers(args.data_set, args.data_dir, args.tag_name)
 
 if __name__ == '__main__':

@@ -3,14 +3,16 @@ import numpy as np
 import model
 import argparse
 import pickle
-from os.path import join
 import h5py
-from Utils import image_processing
+import skimage
+import skimage.io
 import scipy.misc
 import random
 import json
 import os
 import shutil
+from os.path import join
+from Utils import image_processing
 
 def main():
 	parser = argparse.ArgumentParser()
@@ -38,7 +40,7 @@ def main():
 	parser.add_argument('--caption_vector_length', type=int, default=2400,
 					   help='Caption Vector Length')
 
-	parser.add_argument('--data_dir', type=str, default="Data",
+	parser.add_argument('--data_dir', type=str, default="hw3_data",
 					   help='Data Directory')
 
 	parser.add_argument('--learning_rate', type=float, default=0.0002,
@@ -56,8 +58,8 @@ def main():
 	parser.add_argument('--resume_model', type=str, default=None,
                        help='Pre-Trained Model Path, to resume from')
 
-	parser.add_argument('--data_set', type=str, default="flowers",
-                       help='Dat set: MS-COCO, flowers')
+	parser.add_argument('--data_set', type=str, default="faces",
+                       help='Dat set: faces')
 
 	args = parser.parse_args()
 	model_options = {
@@ -131,45 +133,40 @@ def main():
 			if (batch_no % args.save_every) == 0:
 				print "Saving Images, Model"
 				save_for_vis(args.data_dir, real_images, gen, image_files)
-				save_path = saver.save(sess, "Data/Models/latest_model_{}_temp.ckpt".format(args.data_set))
+				save_path = saver.save(sess, args.data_dir+"/Models/latest_model_{}_temp.ckpt".format(args.data_set))
 		if i%5 == 0:
-			save_path = saver.save(sess, "Data/Models/model_after_{}_epoch_{}.ckpt".format(args.data_set, i))
+			save_path = saver.save(sess, args.data_dir+"/Models/model_after_{}_epoch_{}.ckpt".format(args.data_set, i))
 
 def load_training_data(data_dir, data_set):
-	if data_set == 'flowers':
-		h = h5py.File(join(data_dir, 'flower_tv.hdf5'))
-		flower_captions = {}
-		for ds in h.iteritems():
-			flower_captions[ds[0]] = np.array(ds[1])
-		image_list = [key for key in flower_captions]
-		image_list.sort()
+	h = h5py.File(join(data_dir, 'faces.hdf5'))
+	flower_captions = {}
+	for ds in h.iteritems():
+		flower_captions[ds[0]] = np.array(ds[1])
+	image_list = [key for key in flower_captions]
+	image_list.sort()
 
-		img_75 = int(len(image_list)*0.75)
-		training_image_list = image_list[0:img_75]
-		random.shuffle(training_image_list)
+	img_75 = int(len(image_list)*0.75)
+	training_image_list = image_list[0:img_75]
+	random.shuffle(training_image_list)
 		
-		return {
-			'image_list' : training_image_list,
-			'captions' : flower_captions,
-			'data_length' : len(training_image_list)
-		}
-	
-	else:
-		with open(join(data_dir, 'meta_train.pkl')) as f:
-			meta_data = pickle.load(f)
-		# No preloading for MS-COCO
-		return meta_data
+	return {
+		'image_list' : training_image_list,
+		'captions' : flower_captions,
+		'data_length' : len(training_image_list)
+	}
 
 def save_for_vis(data_dir, real_images, generated_images, image_files):
 	
 	shutil.rmtree( join(data_dir, 'samples') )
 	os.makedirs( join(data_dir, 'samples') )
-
+        print('image_files')
+        print(image_files)
+        print('len(image_files)',len(image_files))
+        print('real_images.shape[0]',real_images.shape[0])
 	for i in range(0, real_images.shape[0]):
 		real_image_255 = np.zeros( (64,64,3), dtype=np.uint8)
 		real_images_255 = (real_images[i,:,:,:])
 		scipy.misc.imsave( join(data_dir, 'samples/{}_{}.jpg'.format(i, image_files[i].split('/')[-1] )) , real_images_255)
-
 		fake_image_255 = np.zeros( (64,64,3), dtype=np.uint8)
 		fake_images_255 = (generated_images[i,:,:,:])
 		scipy.misc.imsave(join(data_dir, 'samples/fake_image_{}.jpg'.format(i)), fake_images_255)
@@ -177,62 +174,31 @@ def save_for_vis(data_dir, real_images, generated_images, image_files):
 
 def get_training_batch(batch_no, batch_size, image_size, z_dim, 
 	caption_vector_length, split, data_dir, data_set, loaded_data = None):
-	if data_set == 'mscoco':
-		with h5py.File( join(data_dir, 'tvs/'+split + '_tvs_' + str(batch_no))) as hf:
-			caption_vectors = np.array(hf.get('tv'))
-			caption_vectors = caption_vectors[:,0:caption_vector_length]
-		with h5py.File( join(data_dir, 'tvs/'+split + '_tv_image_id_' + str(batch_no))) as hf:
-			image_ids = np.array(hf.get('tv'))
+	real_images = np.zeros((batch_size, 64, 64, 3))
+	wrong_images = np.zeros((batch_size, 64, 64, 3))
+	captions = np.zeros((batch_size, caption_vector_length))
 
-		real_images = np.zeros((batch_size, 64, 64, 3))
-		wrong_images = np.zeros((batch_size, 64, 64, 3))
-		
-		image_files = []
-		for idx, image_id in enumerate(image_ids):
-			image_file = join(data_dir, '%s2014/COCO_%s2014_%.12d.jpg'%(split, split, image_id) )
-			image_array = image_processing.load_image_array(image_file, image_size)
-			real_images[idx,:,:,:] = image_array
-			image_files.append(image_file)
-		
-		# TODO>> As of Now, wrong images are just shuffled real images.
-		first_image = real_images[0,:,:,:]
-		for i in range(0, batch_size):
-			if i < batch_size - 1:
-				wrong_images[i,:,:,:] = real_images[i+1,:,:,:]
-			else:
-				wrong_images[i,:,:,:] = first_image
-
-		z_noise = np.random.uniform(-1, 1, [batch_size, z_dim])
-
-
-		return real_images, wrong_images, caption_vectors, z_noise, image_files
-
-	if data_set == 'flowers':
-		real_images = np.zeros((batch_size, 64, 64, 3))
-		wrong_images = np.zeros((batch_size, 64, 64, 3))
-		captions = np.zeros((batch_size, caption_vector_length))
-
-		cnt = 0
-		image_files = []
-		for i in range(batch_no * batch_size, batch_no * batch_size + batch_size):
-			idx = i % len(loaded_data['image_list'])
-			image_file =  join(data_dir, 'flowers/jpg/'+loaded_data['image_list'][idx])
-			image_array = image_processing.load_image_array(image_file, image_size)
-			real_images[cnt,:,:,:] = image_array
-			
-			# Improve this selection of wrong image
-			wrong_image_id = random.randint(0,len(loaded_data['image_list'])-1)
-			wrong_image_file =  join(data_dir, 'flowers/jpg/'+loaded_data['image_list'][wrong_image_id])
-			wrong_image_array = image_processing.load_image_array(wrong_image_file, image_size)
-			wrong_images[cnt, :,:,:] = wrong_image_array
-
-			random_caption = random.randint(0,4)
-			captions[cnt,:] = loaded_data['captions'][ loaded_data['image_list'][idx] ][ random_caption ][0:caption_vector_length]
-			image_files.append( image_file )
-			cnt += 1
-
-		z_noise = np.random.uniform(-1, 1, [batch_size, z_dim])
-		return real_images, wrong_images, captions, z_noise, image_files
-
-if __name__ == '__main__':
-	main()
+	cnt = 0
+	image_files = []
+	for i in range(batch_no * batch_size, batch_no * batch_size + batch_size):
+		idx = i % len(loaded_data['image_list'])
+		image_file =  join(data_dir, 'faces/'+loaded_data['image_list'][idx])
+		image_array = image_processing.load_image_array(image_file, image_size)
+		real_images[cnt,:,:,:] = image_array
+		                                   
+		# Improve this selection of wrong image
+		wrong_image_id = random.randint(0,len(loaded_data['image_list'])-1)
+		wrong_image_file =  join(data_dir, 'faces/'+loaded_data['image_list'][wrong_image_id])
+		wrong_image_array = image_processing.load_image_array(wrong_image_file, image_size)
+		wrong_images[cnt, :,:,:] = wrong_image_array
+                                                   
+		captions[cnt,:] = loaded_data['captions'][ loaded_data['image_list'][idx] ][0][0:caption_vector_length]
+		image_files.append( image_file )   
+		cnt += 1                           
+                                                   
+	z_noise = np.random.uniform(-1, 1, [batch_size, z_dim])
+	return real_images, wrong_images, captions, z_noise, image_files
+                                                   
+if __name__ == '__main__':                         
+	main()                                     
+                                                  
