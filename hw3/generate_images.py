@@ -34,20 +34,20 @@ def main():
 
 	parser.add_argument('--caption_vector_length', type=int, default=2400,
 					   help='Caption Vector Length')
-	
-	parser.add_argument('--data_dir', type=str, default="Data",
+
+	parser.add_argument('--data_dir', type=str, default="hw3_data",
 					   help='Data Directory')
 
-	parser.add_argument('--model_path', type=str, default='Data/Models/latest_model_flowers_temp.ckpt',
+	parser.add_argument('--model_path', type=str, default='hw3_data/Models/latest_model_flowers_temp.ckpt',
                        help='Trained Model Path')
 
 	parser.add_argument('--n_images', type=int, default=5,
                        help='Number of Images per Caption')
 
-	parser.add_argument('--caption_thought_vectors', type=str, default='Data/sample_caption_vectors.hdf5',
+	parser.add_argument('--caption_thought_vectors', type=str, default='hw3_data/sample_caption_vectors.hdf5',
                        help='Caption Thought Vector File')
 
-	
+
 	args = parser.parse_args()
 	model_options = {
 		'z_dim' : args.z_dim,
@@ -65,7 +65,7 @@ def main():
 	sess = tf.InteractiveSession()
 	saver = tf.train.Saver()
 	saver.restore(sess, args.model_path)
-	
+
 	input_tensors, outputs = gan.build_generator()
 
 	h = h5py.File( args.caption_thought_vectors )
@@ -76,16 +76,16 @@ def main():
 		caption_images = []
 		z_noise = np.random.uniform(-1, 1, [args.n_images, args.z_dim])
 		caption = [ caption_vector[0:args.caption_vector_length] ] * args.n_images
-		
-		[ gen_image ] = sess.run( [ outputs['generator'] ], 
+
+		[ gen_image ] = sess.run( [ outputs['generator'] ],
 			feed_dict = {
 				input_tensors['t_real_caption'] : caption,
 				input_tensors['t_z'] : z_noise,
 			} )
-		
+
 		caption_images = [gen_image[i,:,:,:] for i in range(0, args.n_images)]
 		caption_image_dic[ cn ] = caption_images
-		print "Generated", cn
+		print("Generated", cn)
 
 	for f in os.listdir( join(args.data_dir, 'val_samples')):
 		if os.path.isfile(f):

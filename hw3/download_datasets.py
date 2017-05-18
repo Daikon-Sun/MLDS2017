@@ -8,7 +8,7 @@ import tarfile
 if sys.version_info >= (3,):
     from urllib.request import urlretrieve
 else:
-    from urllib import urlretrieve
+    from urllib.request import urlretrieve
 
 DATA_DIR = 'Data'
 
@@ -52,15 +52,15 @@ def download_dataset(data_name):
         # from https://github.com/reedscot/icml2016 is problematic to download automatically, so included
         # the text_c10 directory from that archive as a bzipped file in the repo
         captions_tbz = os.path.join(DATA_DIR, 'flowers_text_c10.tar.bz2')
-        print('Extracting ' + captions_tbz)
+        print(('Extracting ' + captions_tbz))
         captions_tar = tarfile.open(captions_tbz, 'r:bz2')
         captions_tar.extractall(flowers_dir)
 
         flowers_url = 'http://www.robots.ox.ac.uk/~vgg/data/flowers/102/102flowers.tgz'
-        print('Downloading ' + flowers_jpg_tgz + ' from ' + flowers_url)
+        print(('Downloading ' + flowers_jpg_tgz + ' from ' + flowers_url))
         urlretrieve(flowers_url, flowers_jpg_tgz,
                     reporthook=dl_progress_hook)
-        print('Extracting ' + flowers_jpg_tgz)
+        print(('Extracting ' + flowers_jpg_tgz))
         flowers_jpg_tar = tarfile.open(flowers_jpg_tgz, 'r:gz')
         flowers_jpg_tar.extractall(flowers_dir)  # archive contains jpg/ folder
 
@@ -77,7 +77,7 @@ def download_dataset(data_name):
         ]
         for filename in skipthoughts_files:
             src_url = SKIPTHOUGHTS_BASE_URL + filename
-            print('Downloading ' + src_url)
+            print(('Downloading ' + src_url))
             urlretrieve(src_url, os.path.join(SKIPTHOUGHTS_DIR, filename),
                         reporthook=dl_progress_hook)
 
@@ -91,7 +91,7 @@ def download_dataset(data_name):
         MODEL_DIR = os.path.join(DATA_DIR, 'Models')
         pretrained_model_filename = 'latest_model_flowers_temp.ckpt'
         src_url = 'https://bitbucket.org/paarth_neekhara/texttomimagemodel/raw/74a4bbaeee26fe31e148a54c4f495694680e2c31/' + pretrained_model_filename
-        print('Downloading ' + src_url)
+        print(('Downloading ' + src_url))
         urlretrieve(
             src_url,
             os.path.join(MODEL_DIR, pretrained_model_filename),

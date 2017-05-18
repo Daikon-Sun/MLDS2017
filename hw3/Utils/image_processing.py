@@ -15,18 +15,19 @@ def load_image_array(image_file, image_size):
 		img_new[:,:,2] = img
 		img = img_new
 
-	img_resized = skimage.transform.resize(img, (image_size, image_size))
+	img_resized = skimage.transform.resize(img, (image_size, image_size),
+                                         mode='constant')
 
 	# FLIP HORIZONTAL WIRH A PROBABILITY 0.5
 	if random.random() > 0.5:
 		img_resized = np.fliplr(img_resized)
-	
-	
+
+
 	return img_resized.astype('float32')
 
 if __name__ == '__main__':
 	# TEST>>>
 	arr = load_image_array('sample.jpg', 64)
-	print arr.mean()
+	print(arr.mean())
 	# rev = np.fliplr(arr)
 	misc.imsave( 'rev.jpg', arr)

@@ -42,6 +42,8 @@ def save_caption_vectors_flowers(data_set, data_dir, tag_name):
   tags = [[words.split(':')[0].split() for words in tag] for tag in tags]
   tags = [[ words for words in tag if wanted_words(words)] for tag in tags]
   tags = dict([[i, to_same(tag)] for i, tag in enumerate(tags) if wanted_tag(tag)])
+  print(tags)
+  exit()
 
   image_captions = {}
   for key, val in tags.items():
@@ -71,10 +73,10 @@ def main():
                        help='Data Set : faces')
   parser.add_argument('--tag_name','-tn',type=str, default='tags_clean.csv',
                        help='tags')
-  parser.add_argument('--vector','-v',type=int, default='skip-thought vector',
-                       help='word vector to use, options: 1. skip-thought vector, combine-skip 2. skip-thought vector, uni-skip 3. skip-thought vector, bi-skip,4. glove vector dimensoin = 300,5. one hot vector')
-  parser.add_argument('--gan type','-gt',type=int, default='dcgan',
-          help='type of conditional gan to use, options: 1.conditional dcgan, 2.conditional lsgan, 3.conditional gan, 4.conditional wgan')
+  #parser.add_argument('--vector','-v',type=int, default='skip-thought vector',
+  #                     help='word vector to use, options: 1. skip-thought vector, combine-skip 2. skip-thought vector, uni-skip 3. skip-thought vector, bi-skip,4. glove vector dimensoin = 300,5. one hot vector')
+  #parser.add_argument('--gan type','-gt',type=int, default='dcgan',
+  #        help='type of conditional gan to use, options: 1.conditional dcgan, 2.conditional lsgan, 3.conditional gan, 4.conditional wgan')
   args = parser.parse_args()
   save_caption_vectors_flowers(args.data_set, args.data_dir, args.tag_name)
 
