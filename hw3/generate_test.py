@@ -25,16 +25,17 @@ def main():
                       default='hw3_data/sample_testing_text.txt')
   parser.add_argument('--data_dir', '-dd', type=str, default='hw3_data',
                       help='Data Directory')
-  parser.add_argument('--vector', '-v', type=int, default=2,
+  parser.add_argument('--vector_type', '-vt', type=int, default=4,
                       choices=(0, 8),
                       help='method to encode caption, options: '
                            '0. uni-skip, 1. bi-skip, 2. combine-skip, '
-                           '3. one-hot, 4. glove_50, 5. glove_100, '
-                           '6. glove_200, 7. glove_300 ')
+                           '3. one-hot, 4. glove')
   parser.add_argument('--out_file', '-of', default='test_vector.hdf5',
                       type=str, help='output file name')
   parser.add_argument('--dict_file', '-df', default='onehot_hair_eyes.hdf5',
                       type=str, help='input dictionary name')
+  parser.add_argument('--glove_file', '-gf', type=str, help='glove file',
+                      default='hw3_data/glove/glove.6B.300d.txt')
   args = parser.parse_args()
 
   with open( args.caption_file ) as f:
@@ -75,16 +76,17 @@ def main():
                  np.eye(h['eyes'].attrs['size'])[new_val[1]]]
       caption_vectors[key] = new_val
 
-  elif args.vector >= 4:
-    h = h5py.File(join(args.data_dir, vector_name[args.vector],
-                       'glove.6B.'+vector_name[args.vector][6:]+'d.hdf5'),'r')
+  elif args.vector == 4:
+    wordvecs = open(glove_file, 'r').read().splitlines()
+    wordvecs = [wordvec.split() for wordvec in wordvecs]
+    wordvecs = dict([[wordvec[0], np.array([wordvec[1:]], dtype=np.float32)]
+                      for wordvec in wordvecs])
     for key, val in captions.items():
       new_val = [val[0], val[2]]
       caption_vectors[key] =\
-        [np.hstack((h['__'+cap[0]+'__'].value, h['__'+cap[1]+'__'].value))
+        [np.hstack((wordvecs[new_val[0]], wordvecs[new_val[1]]))
          for cap in captions]
 
-  print(caption_vectors)
   if os.path.isfile(join(args.data_dir, args.out_file)):
     os.remove(join(args.data_dir, args.out_file))
   h = h5py.File(join(args.data_dir, args.out_file,), 'w')
