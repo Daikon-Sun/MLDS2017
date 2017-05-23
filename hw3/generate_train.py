@@ -34,12 +34,12 @@ def to_same(tags):
   else:
     assert False
 
-def get_vector(num, model, keys, image_captions, encoded_captions):
+def get_vector(model, keys, image_captions, encoded_captions):
   for key in keys:
     encoded_captions[key] = skipthoughts.encode(model, image_captions[key])
 
-def save_caption_vectors_flowers(data_set, data_dir,
-                                 tag_name, vector, out_file):
+def save_caption_vectors_flowers(data_set, data_dir, tag_name, vector,
+                                 out_file, dict_file):
 
   img_dir = join(data_dir, data_set)
   image_files = [f for f in os.listdir(img_dir) if 'jpg' in f]
@@ -50,11 +50,11 @@ def save_caption_vectors_flowers(data_set, data_dir,
   tags = open(tag_file, 'r').read().splitlines()
   tags = [tag.split(',')[1].split('\t') for tag in tags]
   tags = [[words.split(':')[0].split() for words in tag] for tag in tags]
-  tags = [[ words for words in tag if wanted_words(words)] for tag in tags]
+  tags = [[words for words in tag if wanted_words(words)] for tag in tags]
   tags = dict([[i, to_same(tag)]
                for i, tag in enumerate(tags) if wanted_tag(tag)])
 
-  if vector in [1,2,3]:
+  if vector in [0,1,2]:
     image_captions = {}
     for key, val in tags.items():
       image_captions[str(key)+'.jpg'] = ['the girl has '+val[0][0]+' '+val[0][1]
@@ -63,29 +63,27 @@ def save_caption_vectors_flowers(data_set, data_dir,
     encoded_captions = {}
 
     cpus = multiprocessing.cpu_count()
-    print('number of cpus = %d' % cpus)
     parallel_keys = [[] for i in range(cpus)]
     quantity = (len(image_captions)+cpus-1)//cpus
-    print('quantity = %d' % quantity)
 
     for i, key_val in enumerate(image_captions.items()):
       parallel_keys[i//quantity].append(key_val[0])
 
     thrds =\
-      [Process(target=get_vector, args=(i, model, parallel_keys[i],
-                                        image_captions, encoded_captions,))
+      [Process(target=get_vector, args=(model, parallel_keys[i],
+                                        image_captions,))
        for i in range(cpus)]
 
-    for i in range(cpus): thrds[i].start()
-    for i in range(cpus): thrds[i].join()
+    for thrd in thrds: thrd.start()
+    for thrd in thrds: thrd.start()
 
-  elif vector == 4:
+  elif vector == 3:
     hair_list, eye_list = [], []
     for key, val in tags.items():
       if val[0][0] not in hair_list: hair_list.append(val[0][0])
       if val[1][0] not in eyes_list: eyes_list.append(val[1][0])
 
-    h = h5py.File(join(data_dir, out_file), 'w')
+    h = h5py.File(join(data_dir, dict_file), 'w')
     h.create_group('hair')
     h.create_group('eyes')
 
@@ -111,7 +109,7 @@ def save_caption_vectors_flowers(data_set, data_dir,
       encoded_captions[str(key)+'.jpg'] = \
         np.array([np.concatenate((one_hot_hair,one_hot_eyes),axis=0)])
 
-  elif vector==5:
+  elif vector == 4:
     h = h5py.File(join(data_dir, vector_name[vector],'glove.6B.'
                        +vector_name[vector][6:]+'d.hdf5'), 'r')
 
@@ -143,9 +141,11 @@ def main():
                            '6. glove_200 7. glove_300')
   parser.add_argument('--out_file', '-of', default='train_vector.hdf5',
                       type=str, help='output file name')
+  parser.add_argument('--dict_file', '-df', default='onehot_hair_eyes.hdf5',
+                      type=str, help='output dictionary name')
   args = parser.parse_args()
-  save_caption_vectors_flowers(args.data_set, args.data_dir,
-                               args.tag_name, args.vector, args.out_file)
+  save_caption_vectors_flowers(args.data_set, args.data_dir, args.tag_name,
+                               args.vector, args.out_file, args.dict_file)
 
 if __name__ == '__main__':
   main()

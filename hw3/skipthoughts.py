@@ -21,8 +21,8 @@ profile = False
 #-----------------------------------------------------------------------------#
 # Specify model and table locations here
 #-----------------------------------------------------------------------------#
-path_to_models = 'Data/skipthoughts/'
-path_to_tables = 'Data/skipthoughts/'
+path_to_models = 'hw3_data/skipthoughts/'
+path_to_tables = 'hw3_data/skipthoughts/'
 #-----------------------------------------------------------------------------#
 
 path_to_umodel = path_to_models + 'uni_skip.npz'
@@ -88,7 +88,7 @@ def load_tables():
 	return utable, btable
 
 
-def encode(model, X, use_norm=True, verbose=True, batch_size=128, use_eos=False):
+def encode(model, X, use_norm=True, verbose=False, batch_size=128, use_eos=False):
 	"""
 	Encode sentences in the list X. Each entry will return a vector
 	"""
