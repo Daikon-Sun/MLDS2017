@@ -6,11 +6,13 @@ import skipthoughts
 import h5py
 import time
 import threading
-from multiprocessing import Process
+from multiprocessing import Process, Queue
 import multiprocessing
 
 vector_name = ['uni_skip', 'bi_skip', 'combine_skip', 'one_hot',
                'glove_50', 'glove_100', 'glove_200', 'glove_300']
+cpus = multiprocessing.cpu_count()
+print('number of cpus = %d' % cpus)
 
 def wanted_words(words):
   if len(words) != 2:
@@ -34,9 +36,11 @@ def to_same(tags):
   else:
     assert False
 
-def get_vector(model, keys, image_captions, encoded_captions):
+def get_vector(model, keys, image_captions, out_q):
+  vectors = {}
   for key in keys:
-    encoded_captions[key] = skipthoughts.encode(model, image_captions[key])
+    vectors[key] = skipthoughts.encode(model, image_captions[key])
+  out_q.put(vectors)
 
 def save_caption_vectors_flowers(data_set, data_dir, tag_name, vector,
                                  out_file, dict_file):
@@ -54,7 +58,7 @@ def save_caption_vectors_flowers(data_set, data_dir, tag_name, vector,
   tags = dict([[i, to_same(tag)]
                for i, tag in enumerate(tags) if wanted_tag(tag)])
 
-  if vector in [0,1,2]:
+  if vector <= 2:
     image_captions = {}
     for key, val in tags.items():
       image_captions[str(key)+'.jpg'] = ['the girl has '+val[0][0]+' '+val[0][1]
@@ -62,20 +66,23 @@ def save_caption_vectors_flowers(data_set, data_dir, tag_name, vector,
     model = skipthoughts.load_model()
     encoded_captions = {}
 
-    cpus = multiprocessing.cpu_count()
     parallel_keys = [[] for i in range(cpus)]
     quantity = (len(image_captions)+cpus-1)//cpus
 
     for i, key_val in enumerate(image_captions.items()):
       parallel_keys[i//quantity].append(key_val[0])
 
+    out_q = Queue()
     thrds =\
       [Process(target=get_vector, args=(model, parallel_keys[i],
-                                        image_captions,))
+                                        image_captions, out_q))
        for i in range(cpus)]
 
     for thrd in thrds: thrd.start()
-    for thrd in thrds: thrd.start()
+    encoded_captions = {}
+    for i in range(cpus):
+      encoded_captions.update(out_q.get())
+    for thrd in thrds: thrd.join()
 
   elif vector == 3:
     hair_list, eye_list = [], []
@@ -118,7 +125,6 @@ def save_caption_vectors_flowers(data_set, data_dir, tag_name, vector,
       encoded_captions[str(key)+'.jpg'] =\
         np.concatenate((h['__'+val[0][0]+'__'].value,
                         h['__'+val[1][0]+'__'].value),axis=0)
-
 
   h = h5py.File(join(data_dir, out_file), 'w')
   for key in encoded_captions:

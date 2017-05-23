@@ -25,6 +25,7 @@ def main():
   parser.add_argument('--data_dir', '-dd', type=str, default='hw3_data',
                       help='Data Directory')
   parser.add_argument('--vector', '-v', type=int, default=2,
+                      choices=(0, 8),
                       help='method to encode caption, options: '
                            '0. uni-skip, 1. bi-skip, 2. combine-skip, '
                            '3. one-hot, 4. glove_50, 5. glove_100, '
@@ -82,6 +83,7 @@ def main():
         [np.hstack((h['__'+cap[0]+'__'].value, h['__'+cap[1]+'__'].value))
          for cap in captions]
 
+  print(caption_vectors)
   if os.path.isfile(join(args.data_dir, args.out_file)):
     os.remove(join(args.data_dir, args.out_file))
   h = h5py.File(join(args.data_dir, args.out_file,), 'w')
