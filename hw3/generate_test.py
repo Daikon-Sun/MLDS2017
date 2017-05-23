@@ -1,8 +1,9 @@
+#!/usr/bin/python3
 import os
 from os.path import join, isfile
 import numpy as np
 import argparse
-import skipthoughts
+from Utils import skipthoughts
 import h5py
 import multiprocessing
 from multiprocessing import Process, Queue
