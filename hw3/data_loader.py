@@ -36,7 +36,6 @@ def to_same(tags):
 
 def get_vector(num, model, keys, image_captions, encoded_captions):
   for key in keys:
-    print(num)
     encoded_captions[key] = skipthoughts.encode(model, image_captions[key])
 
 def save_caption_vectors_flowers(data_set, data_dir,
@@ -72,23 +71,13 @@ def save_caption_vectors_flowers(data_set, data_dir,
     for i, key_val in enumerate(image_captions.items()):
       parallel_keys[i//quantity].append(key_val[0])
 
-    for i in range(cpus):
-      print(len(parallel_keys[i]))
-
     thrds =\
       [Process(target=get_vector, args=(i, model, parallel_keys[i],
                                         image_captions, encoded_captions,))
        for i in range(cpus)]
 
-    for i in range(cpus):
-      thrds[i].start()
-    for i in range(cpus):
-      thrds[i].join()
-
-    h = h5py.File(join(data_dir, out_file), 'w')
-    for key in encoded_captions:
-      h.create_dataset(key, data=encoded_captions[key])
-    h.close()
+    for i in range(cpus): thrds[i].start()
+    for i in range(cpus): thrds[i].join()
 
   elif vector == 4:
     hair_list, eye_list = [], []
@@ -122,24 +111,21 @@ def save_caption_vectors_flowers(data_set, data_dir,
       encoded_captions[str(key)+'.jpg'] = \
         np.array([np.concatenate((one_hot_hair,one_hot_eyes),axis=0)])
 
-    h = h5py.File(join(data_dir,vector_name[vector],'train_vector.hdf5'), 'w')
-    for key in encoded_captions:
-      h.create_dataset(key,data=encoded_captions[key])
-    h.close()
-
   elif vector==5:
     h = h5py.File(join(data_dir, vector_name[vector],'glove.6B.'
                        +vector_name[vector][6:]+'d.hdf5'), 'r')
+
     encoded_captions = {}
     for key, val in tags.items():
       encoded_captions[str(key)+'.jpg'] =\
         np.concatenate((h['__'+val[0][0]+'__'].value,
                         h['__'+val[1][0]+'__'].value),axis=0)
 
-    h = h5py.File(join(data_dir,vector_name[vector],'train_vector.hdf5'), 'w')
-    for key in encoded_captions:
-      h.create_dataset(key,data=encoded_captions[key])
-    h.close()
+
+  h = h5py.File(join(data_dir, out_file), 'w')
+  for key in encoded_captions:
+    h.create_dataset(key,data=encoded_captions[key])
+  h.close()
 
 def main():
   parser = argparse.ArgumentParser()
