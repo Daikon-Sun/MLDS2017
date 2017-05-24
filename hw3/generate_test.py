@@ -22,30 +22,36 @@ def get_vector(keys, model, captions, out_q):
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('--caption_file', '-cf', type=str, help='caption file',
-                      default='hw3_data/sample_testing_text.txt')
-  parser.add_argument('--data_dir', '-dd', type=str, default='hw3_data',
-                      help='Data Directory')
+                      default='sample_testing_text.txt')
+  parser.add_argument('--method_dir', '-md', type=str, default='',
+                      help='data directory')
+  parser.add_argument('--data_set', '-ds', type=str, default='faces',
+                      help='data set name')
   parser.add_argument('--vector_type', '-vt', type=int, default=4,
                       choices=(0, 8),
                       help='method to encode caption, options: '
                            '0. uni-skip, 1. bi-skip, 2. combine-skip, '
                            '3. one-hot, 4. glove')
-  parser.add_argument('--out_file', '-of', default='test_vector.hdf5',
+  parser.add_argument('--out_file', '-of', default='test_caption_vectors.hdf5',
                       type=str, help='output file name')
   parser.add_argument('--dict_file', '-df', default='onehot_hair_eyes.hdf5',
                       type=str, help='input dictionary name')
   parser.add_argument('--glove_file', '-gf', type=str, help='glove file',
-                      default='hw3_data/glove/glove.6B.300d.txt')
+                      default='glove/glove.6B.300d.txt')
   args = parser.parse_args()
 
-  with open( args.caption_file ) as f:
+  if args.method_dir == '':
+    print('need to specify method_dir!')
+    exit(1)
+
+  with open(join(args.data_set, args.caption_file)) as f:
     captions = f.read().splitlines()
   captions = [cap for cap in captions]
   captions = [cap.split(',') for cap in captions]
   captions = dict([[cap[0], cap[1].split()]
                    for i, cap in enumerate(captions)])
 
-  if args.vector < 3:
+  if args.vector_type < 3:
     for key, val in captions.items():
       captions[key] = ['the girl has '+val[0]+' '+val[1]
                       +' and '+val[2]+' '+val[3]]
@@ -68,7 +74,7 @@ def main():
       caption_vectors.update(out_q.get())
     for i, thrd in enumerate(thrds): thrd.join()
 
-  elif args.vector == 3:
+  elif args.vector_type == 3:
     h = h5py.File(join(args.data_dir, args.dict_file),'r')
     for key, val in captions.items():
       new_val = [h['hair'][val[0]].value, h['eyes'][val[2]].value]
@@ -76,20 +82,21 @@ def main():
                  np.eye(h['eyes'].attrs['size'])[new_val[1]]]
       caption_vectors[key] = new_val
 
-  elif args.vector == 4:
-    wordvecs = open(glove_file, 'r').read().splitlines()
+  elif args.vector_type == 4:
+    wordvecs = open(args.glove_file, 'r').read().splitlines()
     wordvecs = [wordvec.split() for wordvec in wordvecs]
     wordvecs = dict([[wordvec[0], np.array([wordvec[1:]], dtype=np.float32)]
                       for wordvec in wordvecs])
+    caption_vectors = {}
     for key, val in captions.items():
-      new_val = [val[0], val[2]]
+      new_val = [val[0], val[2]] if val[1] == 'hair' else [val[2], val[0]]
       caption_vectors[key] =\
-        [np.hstack((wordvecs[new_val[0]], wordvecs[new_val[1]]))
-         for cap in captions]
+        np.hstack((wordvecs[new_val[0]], wordvecs[new_val[1]]))
 
-  if os.path.isfile(join(args.data_dir, args.out_file)):
-    os.remove(join(args.data_dir, args.out_file))
-  h = h5py.File(join(args.data_dir, args.out_file,), 'w')
+  filename = join(args.data_set, args.method_dir, args.out_file)
+  if os.path.isfile(filename):
+    os.remove(filename)
+  h = h5py.File(filename, 'w')
   for key in caption_vectors.keys():
     h.create_dataset(key, data=caption_vectors[key])
   h.close()

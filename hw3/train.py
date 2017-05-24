@@ -33,7 +33,7 @@ def main():
              help='Dimension of gen untis for for fully connected layer 1024')
   parser.add_argument('--caption_vector_length', '-cvl', type=int, default=2400,
              help='Caption Vector Length')
-  parser.add_argument('--method_dir', type=str, default='method_1',
+  parser.add_argument('--method_dir', '-md', type=str, default='',
              help='method directory')
   parser.add_argument('--learning_rate', type=float, default=0.0002,
              help='Learning Rate')
@@ -53,6 +53,9 @@ def main():
                        default='caption_vectors.hdf5',
                        help='encoded training caption')
   args = parser.parse_args()
+  if args.method_dir == '':
+    print('need to specify method_dir!')
+    exit(1)
   model_options = {
     'z_dim' : args.z_dim,
     't_dim' : args.t_dim,

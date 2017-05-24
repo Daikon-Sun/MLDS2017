@@ -27,15 +27,17 @@ def main():
              help='Dimension of gen untis for for fully connected layer 1024')
   parser.add_argument('--caption_vector_length', '-cvl', type=int, default=2400,
                       help='Caption Vector Length')
-  parser.add_argument('--data_dir', '-dd', type=str, default='hw3_data',
-                      help='Data Directory')
+  parser.add_argument('--data_set', '-ds', type=str, default='faces',
+                      help='data directory')
+  parser.add_argument('--method_dir', '-md', type=str, default='',
+                      help='method directory')
   parser.add_argument('--model_path', '-mp', type=str,
-                      default='hw3_data/Models/latest_model_flowers_temp.ckpt',
+                      default='latest_model_flowers_temp.ckpt',
                       help='Trained Model Path')
   parser.add_argument('--n_images', '-ni', type=int, default=5,
                        help='Number of Images per Caption')
-  parser.add_argument('--caption_thought_vectors', '-ctv', type=str,
-                      default='hw3_data/test_vector.hdf5',
+  parser.add_argument('--caption_vectors', '-cv', type=str,
+                      default='test_caption_vectors.hdf5',
                       help='Caption Thought Vector File')
   parser.add_argument('--out_dir', '-od', type=str, default='samples',
                       help='output directory')
@@ -54,13 +56,14 @@ def main():
 
   gan = model.GAN(model_options)
   _, _, _, _, _ = gan.build_model()
-  sess = tf.InteractiveSession()
+  sess = tf.Session()
   saver = tf.train.Saver()
-  saver.restore(sess, args.model_path)
+  saver.restore(sess,
+                join(args.data_set, args.method_dir, 'Models', args.model_path))
 
   input_tensors, outputs = gan.build_generator()
 
-  h = h5py.File(args.caption_thought_vectors)
+  h = h5py.File(join(args.data_set, args.method_dir, args.caption_vectors))
   caption_image_dic = {}
 
   for i, key in enumerate(h):
@@ -76,10 +79,6 @@ def main():
 
     caption_image_dic[key] =\
       [gen_image[i, :, :, :] for i in range(0, args.n_images)]
-
-  for f in os.listdir( join(args.data_dir, 'val_samples')):
-    if os.path.isfile(f):
-      os.unlink(join(args.data_dir, 'val_samples/' + f))
 
   if not os.path.exists(args.out_dir):
     os.makedirs(args.out_dir)
