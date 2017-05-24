@@ -94,7 +94,7 @@ def main():
   loaded_data = load_training_data(args.data_set, args.method_dir,
                                    args.imgs_dir, args.caption_vectors)
 
-  for i in range(args.epochs):
+  for i in range(1, args.epochs+1):
     batch_no = 0
     while batch_no*args.batch_size < loaded_data['data_length']:
       real_images, wrong_images, caption_vectors, z_noise, image_files =\
@@ -129,6 +129,8 @@ def main():
                      input_tensors['t_z'] : z_noise,
                    })
 
+      print('d_loss = {:5f} g_loss = {:5f} batch_no = {} '
+            'epochs = {}'.format(d_loss, g_loss, batch_no, i))
       batch_no += 1
       if (batch_no % args.save_every) == 0:
         save_for_vis(args.data_set, args.method_dir, real_images,
