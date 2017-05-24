@@ -144,8 +144,9 @@ def main():
                                 '{}_temp.ckpt'.format(args.data_set)))
     if i%5 == 0:
       save_path =\
-        saver.save(sess, join(args.method_dir, 'Models', 'model_after_'
-                   '{}_epoch_{}.ckpt'.format(args.data_set, i)))
+        saver.save(sess, join(args.data_set, args.method_dir, 'Models',
+                              'model_after_'
+                              '{}_epoch_{}.ckpt'.format(args.data_set, i)))
 
 def load_training_data(data_set, method_dir, imgs_dir, caption_vectors):
   h = h5py.File(join(data_set, method_dir, caption_vectors))
@@ -183,7 +184,7 @@ def save_for_vis(data_set, method_dir, real_images,
       real_images_255)
     fake_image_255 = np.zeros((64,64,3), dtype=np.uint8)
     fake_images_255 = (generated_images[i,:,:,:])
-    scipy.misc.imsave(join(data_set, method_dir, 'samples'
+    scipy.misc.imsave(join(data_set, method_dir, 'samples',
                            'fake_image_{}.jpg'.format(i)),
                       fake_images_255)
 
