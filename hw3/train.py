@@ -104,7 +104,7 @@ def main():
                            loaded_data)
 
       # DISCR UPDATE
-      for i in range(args.dis_updates):
+      for j in range(args.dis_updates):
         check_ts = [checks['d_loss1'] , checks['d_loss2'], checks['d_loss3']]
         _, d_loss, gen, d1, d2, d3 =\
           sess.run([d_optim, loss['d_loss'], outputs['generator']] + check_ts,
@@ -119,7 +119,7 @@ def main():
             'D = {:5f}'.format(d1, d2, d3, d_loss))
 
       # GEN UPDATE
-      for i in range(args.gen_updates):
+      for j in range(args.gen_updates):
         _, g_loss, gen =\
           sess.run([g_optim, loss['g_loss'], outputs['generator']],
                    feed_dict = {
@@ -131,6 +131,7 @@ def main():
 
       print('d_loss = {:5f} g_loss = {:5f} batch_no = {} '
             'epochs = {}'.format(d_loss, g_loss, batch_no, i))
+      print('-'*60)
       batch_no += 1
       if (batch_no % args.save_every) == 0:
         save_for_vis(args.data_set, args.method_dir, real_images,
