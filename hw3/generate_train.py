@@ -150,7 +150,7 @@ def main():
                       help='method to encode captions,options: '
                            '0. uni_skip, 1. bi_skip, 2. combine_skip, '
                            '3. one_hot, 4. glove')
-  parser.add_argument('--out_file', '-of', default='train_vectors.hdf5',
+  parser.add_argument('--out_file', '-of', default='caption_vectors.hdf5',
                       type=str, help='output file name')
   parser.add_argument('--dict_file', '-df', default='onehot_hair_eyes.hdf5',
                       type=str, help='output dictionary name')
