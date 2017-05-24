@@ -43,15 +43,14 @@ def get_vector(model, keys, image_captions, out_q):
     vectors[key] = skipthoughts.encode(model, image_captions[key])
   out_q.put(vectors)
 
-def save_caption_vectors_flowers(data_set, data_dir, tag_name, vector_type,
-                                 out_file, dict_file, glove_file):
+def save_caption(args):
 
-  img_dir = join(data_dir, data_set)
+  img_dir = join(args.data_set, args.imgs_dir)
   image_files = [f for f in os.listdir(img_dir) if 'jpg' in f]
 
   print('number of train images: %d' % len(image_files))
 
-  tag_file = join(data_dir, tag_name)
+  tag_file = join(args.data_set, args.tag_name)
   tags = open(tag_file, 'r').read().splitlines()
   tags = [tag.split(',') for tag in tags]
   tags = [[tag[0], tag[1].split('\t')] for tag in tags]
@@ -62,7 +61,7 @@ def save_caption_vectors_flowers(data_set, data_dir, tag_name, vector_type,
   tags = dict([[tag[0], to_same(tag[1])]
                for tag in tags if wanted_tag(tag[1])])
 
-  if vector_type <= 2:
+  if args.vector_type <= 2:
     image_captions = {}
     for key, val in tags.items():
       image_captions[str(key)+'.jpg'] = ['the girl has '+val[0][0]+' '+val[0][1]
@@ -88,7 +87,7 @@ def save_caption_vectors_flowers(data_set, data_dir, tag_name, vector_type,
       encoded_captions.update(out_q.get())
     for thrd in thrds: thrd.join()
 
-  elif vector_type == 3:
+  elif args.vector_type == 3:
     hair_list, eye_list = [], []
     for key, val in tags.items():
       if val[0][0] not in hair_list: hair_list.append(val[0][0])
@@ -120,8 +119,8 @@ def save_caption_vectors_flowers(data_set, data_dir, tag_name, vector_type,
       encoded_captions[str(key)+'.jpg'] = \
         np.array([np.concatenate((one_hot_hair,one_hot_eyes),axis=0)])
 
-  elif vector_type == 4:
-    wordvecs = open(glove_file, 'r').read().splitlines()
+  elif args.vector_type == 4:
+    wordvecs = open(args.glove_file, 'r').read().splitlines()
     wordvecs = [wordvec.split() for wordvec in wordvecs]
     wordvecs = dict([[wordvec[0], np.array([wordvec[1:]], dtype=np.float32)]
                       for wordvec in wordvecs])
@@ -131,34 +130,37 @@ def save_caption_vectors_flowers(data_set, data_dir, tag_name, vector_type,
       encoded_captions[key+'.jpg'] =\
         np.hstack((wordvecs[val[0][0]], wordvecs[val[1][0]]))
 
-  h = h5py.File(join(data_dir, out_file), 'w')
+  h = h5py.File(join(args.data_set, args.method_dir, args.out_file), 'w')
   for key in encoded_captions:
     h.create_dataset(key,data=encoded_captions[key])
   h.close()
 
 def main():
   parser = argparse.ArgumentParser()
-  parser.add_argument('--data_dir', '-dd', type=str, default='hw3_data',
-                      help='Data directory')
   parser.add_argument('--data_set', '-ds', type=str, default='faces',
-                      help='Data Set : faces')
-  parser.add_argument('--tag_name', '-tn', type=str, default='tags_clean.csv',
-                      help='tags')
+                      help='data set')
+  parser.add_argument('--method_dir', '-md', type=str, default='',
+                      help='method directory')
+  parser.add_argument('--tag_name', '-tn', type=str, default='tags.csv',
+                      help='tags filename')
+  parser.add_argument('--imgs_dir', '-id', type=str, default='imgs',
+                      help='images directory')
   parser.add_argument('--vector_type', '-vt', type=int, default=4,
                       choices=range(0, 5),
                       help='method to encode captions,options: '
                            '0. uni_skip, 1. bi_skip, 2. combine_skip, '
                            '3. one_hot, 4. glove')
-  parser.add_argument('--out_file', '-of', default='train_vector.hdf5',
+  parser.add_argument('--out_file', '-of', default='train_vectors.hdf5',
                       type=str, help='output file name')
   parser.add_argument('--dict_file', '-df', default='onehot_hair_eyes.hdf5',
                       type=str, help='output dictionary name')
-  parser.add_argument('--glove_file', '-gf', type=str, help='glove file',
-                      default='hw3_data/glove/glove.6B.300d.txt')
+  parser.add_argument('--glove_file', '-gf', type=str, help='input glove file',
+                      default='glove/glove.6B.300d.txt')
   args = parser.parse_args()
-  save_caption_vectors_flowers(args.data_set, args.data_dir, args.tag_name,
-                               args.vector_type, args.out_file, args.dict_file,
-                               args.glove_file)
+  if args.method_dir == '':
+    print('Need to specify the method directory!')
+    exit(1)
+  save_caption(args)
 
 if __name__ == '__main__':
   main()
