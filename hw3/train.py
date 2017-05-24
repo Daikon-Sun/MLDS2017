@@ -70,16 +70,20 @@ def main():
   gan = model.GAN(model_options)
   input_tensors, variables, loss, outputs, checks = gan.build_model()
   with tf.variable_scope(tf.get_variable_scope(), reuse=False):
-    d_optim = tf.train.AdamOptimizer(args.learning_rate, beta1 = args.beta1).minimize(loss['d_loss'], var_list=variables['d_vars'])
-    g_optim = tf.train.AdamOptimizer(args.learning_rate, beta1 = args.beta1).minimize(loss['g_loss'], var_list=variables['g_vars'])
+    d_optim =\
+      tf.train.AdamOptimizer(\
+        args.learning_rate, beta1 = args.beta1
+      ).minimize(loss['d_loss'], var_list=variables['d_vars'])
+    g_optim =\
+      tf.train.AdamOptimizer(\
+        args.learning_rate, beta1 = args.beta1
+      ).minimize(loss['g_loss'], var_list=variables['g_vars'])
 
   config = tf.ConfigProto()
-  config.gpu_options.per_process_gpu_memory_fraction = 0.4
   config.gpu_options.allow_growth = True
   sess = tf.Session(config=config)
   init = tf.global_variables_initializer()
   sess.run(init)
-  #tf.initialize_all_variables().run()
 
   saver = tf.train.Saver()
   if args.resume_model:
@@ -96,6 +100,11 @@ def main():
                            args.z_dim, args.caption_vector_length, 'train',
                            args.method_dir, args.imgs_dir, args.data_set,
                            loaded_data)
+      #print('real images shape  = ', real_images.shape)
+      #print('wrong images shape = ', real_images.shape)
+      #print('caption_vectors shape = ', caption_vectors.shape)
+      #print('z_noise shape = ', z_noise.shape)
+      #print('len loaded_data = ', loaded_data['data_length'])
 
       # DISCR UPDATE
       check_ts = [checks['d_loss1'] , checks['d_loss2'], checks['d_loss3']]
@@ -152,21 +161,17 @@ def main():
                               '{}_epoch_{}.ckpt'.format(args.data_set, i)))
 
 def load_training_data(data_set, method_dir, imgs_dir, caption_vectors):
-  h = h5py.File(join(data_set, method_dir, caption_vectors))
+  h = h5py.File(join(data_set, method_dir, caption_vectors), 'r')
   flower_captions = {}
   for ds in h.items():
     flower_captions[ds[0]] = np.array(ds[1])
   image_list = [key for key in flower_captions]
   image_list.sort()
-
-  img_75 = int(len(image_list)*0.75)
-  training_image_list = image_list[0:img_75]
-  random.shuffle(training_image_list)
-
+  random.shuffle(image_list)
   return {
     'image_list' : training_image_list,
     'captions' : flower_captions,
-    'data_length' : len(training_image_list)
+    'data_length' : len(image_list)
   }
 
 def save_for_vis(data_set, method_dir, real_images,
@@ -207,7 +212,7 @@ def get_training_batch(batch_no, batch_size, image_size, z_dim,
     real_images[cnt,:,:,:] = image_array
 
     # Improve this selection of wrong image
-    wrong_image_id = random.randint(0,len(loaded_data['image_list'])-1)
+    wrong_image_id = random.randint(0, len(loaded_data['image_list'])-1)
     wrong_image_file =  join(data_set, imgs_dir,
                              loaded_data['image_list'][wrong_image_id])
     wrong_image_array = image_processing.load_image_array(wrong_image_file,
