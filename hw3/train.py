@@ -17,41 +17,43 @@ from Utils import image_processing
 
 def main():
   parser = argparse.ArgumentParser()
-  parser.add_argument('--z_dim', type=int, default=100,
-             help='Noise dimension')
+  parser.add_argument('--z_dim', type=int, default=100, help='Noise dimension')
   parser.add_argument('--t_dim', type=int, default=256,
-             help='Text feature dimension')
-  parser.add_argument('--batch_size', type=int, default=64,
-             help='Batch Size')
+                      help='Text feature dimension')
+  parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
   parser.add_argument('--image_size', type=int, default=64,
-             help='Image Size a, a x a')
+                      help='Image Size a, a x a')
   parser.add_argument('--gf_dim', type=int, default=64,
-             help='Number of conv in the first layer gen.')
+                      help='Number of conv in the first layer gen.')
   parser.add_argument('--df_dim', type=int, default=64,
-             help='Number of conv in the first layer discr.')
+                      help='Number of conv in the first layer discr.')
   parser.add_argument('--gfc_dim', type=int, default=1024,
-             help='Dimension of gen untis for for fully connected layer 1024')
+                      help='Dimension of gen untis for fully connected layer')
   parser.add_argument('--caption_vector_length', '-cvl', type=int, default=2400,
-             help='Caption Vector Length')
+                      help='Caption Vector Length')
   parser.add_argument('--method_dir', '-md', type=str, default='',
-             help='method directory')
+                      help='method directory')
   parser.add_argument('--learning_rate', type=float, default=0.0002,
-             help='Learning Rate')
+                      help='Learning Rate')
   parser.add_argument('--beta1', type=float, default=0.5,
-             help='Momentum for Adam Update')
+                      help='Momentum for Adam Update')
   parser.add_argument('--epochs', type=int, default=600,
-             help='Max number of epochs')
+                      help='Max number of epochs')
   parser.add_argument('--save_every', type=int, default=30,
-             help='Save Model/Samples every x iterations over batches')
+                      help='Save Model/Samples every x iterations over batches')
   parser.add_argument('--resume_model', type=str, default=None,
-                       help='Pre-Trained Model Path, to resume from')
+                      help='Pre-Trained Model Path, to resume from')
   parser.add_argument('--data_set', type=str, default='faces',
-                       help='data set: faces')
+                      help='data set: faces')
   parser.add_argument('--imgs_dir', type=str, default='imgs',
-                       help='images directory')
+                      help='images directory')
   parser.add_argument('--caption_vectors', type=str,
-                       default='caption_vectors.hdf5',
-                       help='encoded training caption')
+                      default='caption_vectors.hdf5',
+                      help='encoded training caption')
+  parser.add_argument('--dis_updates', '-dr', type=int, default=1,
+                      help='discriminator update per round')
+  parser.add_argument('--gen_updates', '-gr', type=int, default=2,
+                      help='generator update per round')
   args = parser.parse_args()
   if args.method_dir == '':
     print('need to specify method_dir!')
@@ -100,71 +102,50 @@ def main():
                            args.z_dim, args.caption_vector_length, 'train',
                            args.method_dir, args.imgs_dir, args.data_set,
                            loaded_data)
-      #print('real images shape  = ', real_images.shape)
-      #print('wrong images shape = ', real_images.shape)
-      #print('caption_vectors shape = ', caption_vectors.shape)
-      #print('z_noise shape = ', z_noise.shape)
-      #print('len loaded_data = ', loaded_data['data_length'])
 
       # DISCR UPDATE
-      check_ts = [checks['d_loss1'] , checks['d_loss2'], checks['d_loss3']]
-      _, d_loss, gen, d1, d2, d3 =\
-        sess.run([d_optim, loss['d_loss'], outputs['generator']] + check_ts,
-                 feed_dict = {
-                   input_tensors['t_real_image'] : real_images,
-                   input_tensors['t_wrong_image'] : wrong_images,
-                   input_tensors['t_real_caption'] : caption_vectors,
-                   input_tensors['t_z'] : z_noise,
-                 })
+      for i in range(args.dis_updates):
+        check_ts = [checks['d_loss1'] , checks['d_loss2'], checks['d_loss3']]
+        _, d_loss, gen, d1, d2, d3 =\
+          sess.run([d_optim, loss['d_loss'], outputs['generator']] + check_ts,
+                   feed_dict = {
+                     input_tensors['t_real_image'] : real_images,
+                     input_tensors['t_wrong_image'] : wrong_images,
+                     input_tensors['t_real_caption'] : caption_vectors,
+                     input_tensors['t_z'] : z_noise,
+                   })
 
-      print("d1", d1)
-      print("d2", d2)
-      print("d3", d3)
-      print("D", d_loss)
+      print('d1 = {}, d2 = {}, d3 = {}, D = {}'.format(d1, d2, d3, D))
 
       # GEN UPDATE
-      _, g_loss, gen =\
-        sess.run([g_optim, loss['g_loss'], outputs['generator']],
-                 feed_dict = {
-                   input_tensors['t_real_image'] : real_images,
-                   input_tensors['t_wrong_image'] : wrong_images,
-                   input_tensors['t_real_caption'] : caption_vectors,
-                   input_tensors['t_z'] : z_noise,
-                 })
-
-      # GEN UPDATE TWICE, to make sure d_loss does not go to 0
-      _, g_loss, gen =\
-        sess.run([g_optim, loss['g_loss'], outputs['generator']],
-                 feed_dict = {
-                   input_tensors['t_real_image'] : real_images,
-                   input_tensors['t_wrong_image'] : wrong_images,
-                   input_tensors['t_real_caption'] : caption_vectors,
-                   input_tensors['t_z'] : z_noise,
-                 })
-
-      print("LOSSES", d_loss, g_loss, batch_no, i,
-            len(loaded_data['image_list'])/ args.batch_size)
+      for i in range(args.gen_updates):
+        _, g_loss, gen =\
+          sess.run([g_optim, loss['g_loss'], outputs['generator']],
+                   feed_dict = {
+                     input_tensors['t_real_image'] : real_images,
+                     input_tensors['t_wrong_image'] : wrong_images,
+                     input_tensors['t_real_caption'] : caption_vectors,
+                     input_tensors['t_z'] : z_noise,
+                   })
 
       batch_no += 1
       if (batch_no % args.save_every) == 0:
-        print("Saving Images, Model")
         save_for_vis(args.data_set, args.method_dir, real_images,
                      gen, image_files)
         save_path =\
           saver.save(sess, join(args.data_set, args.method_dir, 'Models',
                                 'latest_model_'
                                 '{}_temp.ckpt'.format(args.data_set)))
-    if i%5 == 0:
+    if i%20 == 0:
       save_path =\
-        saver.save(sess, join(args.data_set, args.method_dir, 'Models',
-                              'model_after_'
+        saver.save(sess, join(args.data_set,
+                              args.method_dir, 'Models', 'model_after_'
                               '{}_epoch_{}.ckpt'.format(args.data_set, i)))
 
 def load_training_data(data_set, method_dir, imgs_dir, caption_vectors):
   h = h5py.File(join(data_set, method_dir, caption_vectors), 'r')
   flower_captions = {}
-  for ds in h.items():
-    flower_captions[ds[0]] = np.array(ds[1])
+  for ds in h.items(): flower_captions[ds[0]] = np.array(ds[1])
   image_list = [key for key in flower_captions]
   image_list.sort()
   random.shuffle(image_list)
@@ -179,10 +160,6 @@ def save_for_vis(data_set, method_dir, real_images,
 
   shutil.rmtree(join(data_set, method_dir, 'samples'))
   os.makedirs(join(data_set, method_dir, 'samples'))
-  print('image_files')
-  print(image_files)
-  print(('len(image_files)',len(image_files)))
-  print(('real_images.shape[0]',real_images.shape[0]))
   for i in range(0, real_images.shape[0]):
     real_image_255 = np.zeros( (64,64,3), dtype=np.uint8)
     real_images_255 = (real_images[i,:,:,:])
