@@ -115,7 +115,8 @@ def main():
                      input_tensors['t_z'] : z_noise,
                    })
 
-      print('d1 = {}, d2 = {}, d3 = {}, D = {}'.format(d1, d2, d3, D))
+      print('d1 = {:5f} d2 = {:5f} d3 = {:5f} '
+            'D = {:5f}'.format(d1, d2, d3, d_loss))
 
       # GEN UPDATE
       for i in range(args.gen_updates):
@@ -150,7 +151,7 @@ def load_training_data(data_set, method_dir, imgs_dir, caption_vectors):
   image_list.sort()
   random.shuffle(image_list)
   return {
-    'image_list' : training_image_list,
+    'image_list' : image_list,
     'captions' : flower_captions,
     'data_length' : len(image_list)
   }
