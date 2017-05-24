@@ -29,7 +29,7 @@ def main():
                       help='Number of conv in the first layer discr.')
   parser.add_argument('--gfc_dim', type=int, default=1024,
                       help='Dimension of gen untis for fully connected layer')
-  parser.add_argument('--caption_vector_length', '-cvl', type=int, default=2400,
+  parser.add_argument('--caption_vector_length', '-cvl', type=int, default=600,
                       help='Caption Vector Length')
   parser.add_argument('--method_dir', '-md', type=str, default='',
                       help='method directory')
@@ -87,7 +87,7 @@ def main():
   init = tf.global_variables_initializer()
   sess.run(init)
 
-  saver = tf.train.Saver()
+  saver = tf.train.Saver(max_to_keep=None)
   if args.resume_model:
     saver.restore(sess, args.resume_model)
 
@@ -139,7 +139,7 @@ def main():
           saver.save(sess, join(args.data_set, args.method_dir, 'Models',
                                 'latest_model_'
                                 '{}_temp.ckpt'.format(args.data_set)))
-    if i%20 == 0:
+    if i%50 == 0:
       save_path =\
         saver.save(sess, join(args.data_set,
                               args.method_dir, 'Models', 'model_after_'
