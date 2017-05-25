@@ -88,14 +88,14 @@ def save_caption(args):
     for thrd in thrds: thrd.join()
 
   elif args.vector_type == 3:
-    hair_list, eye_list = [], []
+    hair_list, eyes_list = [], []
     for key, val in tags.items():
       if val[0][0] not in hair_list: hair_list.append(val[0][0])
       if val[1][0] not in eyes_list: eyes_list.append(val[1][0])
 
-    if len(hair_list) < len(eyes_list): hair_list.append('NULL')
-    elif len(hair_list) > len(eyes_list): eyes_list.append('NULL')
-    h = h5py.File(join(args.data_set, dict_file), 'w')
+    if len(hair_list) < len(eyes_list): hair_list.append('__NULL__')
+    elif len(hair_list) > len(eyes_list): eyes_list.append('__NULL__')
+    h = h5py.File(join(args.data_set, args.dict_file), 'w')
     h.create_group('hair')
     h.create_group('eyes')
 
@@ -118,8 +118,8 @@ def save_caption(args):
         np.eye(num_classes_hair)[encoded_captions[str(key)+'.jpg'][0]]
       one_hot_eyes =\
         np.eye(num_classes_eyes)[encoded_captions[str(key)+'.jpg'][1]]
-      encoded_captions[str(key)+'.jpg'] = \
-        np.array([np.concatenate((one_hot_hair,one_hot_eyes),axis=0)])
+      encoded_captions[str(key)+'.jpg'] =\
+        np.array([np.hstack((one_hot_hair,one_hot_eyes))])
 
   elif args.vector_type == 4:
     wordvecs = open(args.glove_file, 'r').read().splitlines()
