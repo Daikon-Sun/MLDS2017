@@ -44,7 +44,7 @@ def main():
     print('need to specify method_dir!')
     exit(1)
 
-  with open(join(args.data_set, args.caption_file)) as f:
+  with open(args.caption_file) as f:
     captions = f.read().splitlines()
   captions = [cap for cap in captions]
   captions = [cap.split(',') for cap in captions]
