@@ -50,9 +50,9 @@ def main():
   parser.add_argument('--caption_vectors', type=str,
                       default='caption_vectors.hdf5',
                       help='encoded training caption')
-  parser.add_argument('--dis_updates', '-dr', type=int, default=1,
+  parser.add_argument('--dis_updates', '-du', type=int, default=1,
                       help='discriminator update per round')
-  parser.add_argument('--gen_updates', '-gr', type=int, default=2,
+  parser.add_argument('--gen_updates', '-gu', type=int, default=2,
                       help='generator update per round')
   args = parser.parse_args()
   if args.method_dir == '':
