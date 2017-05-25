@@ -32,7 +32,7 @@ def main():
   parser.add_argument('--method_dir', '-md', type=str, default='',
                       help='method directory')
   parser.add_argument('--model_path', '-mp', type=str,
-                      default='latest_model_flowers_temp.ckpt',
+                      default='latest_model_faces_temp.ckpt',
                       help='Trained Model Path')
   parser.add_argument('--n_images', '-ni', type=int, default=5,
                        help='Number of Images per Caption')
