@@ -93,7 +93,9 @@ def save_caption(args):
       if val[0][0] not in hair_list: hair_list.append(val[0][0])
       if val[1][0] not in eyes_list: eyes_list.append(val[1][0])
 
-    h = h5py.File(join(data_dir, dict_file), 'w')
+    if len(hair_list) < len(eyes_list): hair_list.append('NULL')
+    elif len(hair_list) > len(eyes_list): eyes_list.append('NULL')
+    h = h5py.File(join(args.data_set, dict_file), 'w')
     h.create_group('hair')
     h.create_group('eyes')
 
