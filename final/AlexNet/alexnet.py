@@ -133,7 +133,7 @@ b_full_8 = tf.Variable(np.array(fc_8[1]))
 y_full_8 = tf.add(tf.matmul(h_dropout_7, W_full_8), b_full_8, name = "fc8")
 
 # reading sample image
-im = np.expand_dims(imresize(imresize(imread(os.path.join("../sample_images", "images.jpg")), (256, 256)) - mean, (224, 224)), axis = 0)
+im = np.expand_dims(imresize(imresize(imread(os.path.join("../imgs", "images.jpg")), (256, 256)) - mean, (224, 224)), axis = 0)
 
 # activation visualization
 #layers = ['r', 'p', 'c']

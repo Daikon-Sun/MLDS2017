@@ -137,6 +137,7 @@ def _get_visualization(graph_or_path, value_feed_dict, input_tensor, layers, pat
     print('=========================')
     if isinstance(layers, list):
       for layer in layers:
+        print('-'*80, layer)
         if layer != None and layer.lower() not in dict_layer.keys():
           is_success = _visualization_by_layer_name(g, value_feed_dict, input_tensor, layer, method, path_logdir, path_outdir)
         elif layer != None and layer.lower() in dict_layer.keys():
