@@ -14,7 +14,7 @@ imagenet_mean = 117.0
 t_preprocessed = t_input-imagenet_mean
 tf.import_graph_def(graph_def, {'input' : t_preprocessed})
 # reading sample image
-im = np.expand_dims(imresize(imread(os.path.join("../sample_images", "images.jpg")), (224, 224)), axis = 0)
+im = np.expand_dims(imresize(imread(os.path.join("../imgs", "images.jpg")), (224, 224)), axis = 0)
 # deepdream visualization
 layer = "import/softmax2_pre_activation"
 # api call
