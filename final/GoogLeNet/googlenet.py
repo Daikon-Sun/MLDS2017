@@ -16,10 +16,11 @@ tf.import_graph_def(graph_def, {'input' : t_preprocessed})
 # reading sample image
 im = np.expand_dims(imresize(imread(os.path.join("../imgs", "images.jpg")), (224, 224)), axis = 0)
 # deepdream visualization
-layer = "import/softmax2_pre_activation"
+#layer = "import/softmax2_pre_activation"
+layers = ['r', 'p', 'c']
 # api call
 start = time.time()
-is_success = deepdream_visualization(graph_or_path=tf.get_default_graph(), value_feed_dict = {t_input : im}, layer=layer,
-                                     classes = [1, 2, 3, 4, 5], path_logdir="./Log", path_outdir="./Output")
+is_success = deconv_visualization(graph_or_path=tf.get_default_graph(), value_feed_dict = {t_input : im}, layers=layers,
+                                  path_logdir="./Log", path_outdir="./Output")
 start = time.time() - start
 print("Total Time = %f" % (start))
