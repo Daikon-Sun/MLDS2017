@@ -145,8 +145,7 @@ args = parser.parse_args()
 layers = list(args.layers)
 logdir = args.prefix+'_Log'
 outdir = args.prefix+'_Output'
-im = np.expand_dims(imresize(imresize(imread(
-  os.path.join("../imgs", args.image)), (256, 256)), (224, 224)), axis = 0)
+im = np.expand_dims(imresize(imresize(imread(args.image), (256, 256)), (224, 224)), axis = 0)
 
 visual_func = [deconv_visualization, activation_visualization]
 
