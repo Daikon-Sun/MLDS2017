@@ -1,8 +1,7 @@
 # NTU MLDS2017 final part1
 **Team: 培傑與順耀**
 
-**Team Members:B03901056 孫凡耕, B03901032 郭子生, B03901003 許晉嘉, B03901070 羅
-啟心**
+**Team Members:B03901056 孫凡耕, B03901032 郭子生, B03901003 許晉嘉, B03901070 羅啟心**
 
 ## Followings should be installed and versions suggested:
 - tensorflow-gpu >= 1.0.0
