@@ -8,7 +8,7 @@
 - python-package : tensorpack >= 0.2.0
 
 ## Usage
-- `python3 test_[AlexNet, GoogLeNet, Vgg16, Vgg19].py -h` to see help message
+- `python3 test_[alexnet, googlenet, vgg16, vgg19].py -h` to see help message
 - In summary, need to provide:
   1. one input images
   2. method to visualize (0->deconvolution, 1->activation, 2->saliency_map)
