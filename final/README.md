@@ -12,13 +12,14 @@
 - In summary, need to provide:
   1. one input images
   2. method to visualize (0->deconvolution, 1->activation, 2->saliency_map)
-  3. prefix of log directory and output directory
+  3. layers to be visualize ('r'->relu, 'p'->pooling, 'c'->convolution)
+  4. prefix of log directory and output directory
 
   p.s.1 currently `AlexNet` is the only one that supports `saliency_map`
 
   p.s.2 Need to run `deconvolution` or `activation` once before running `saliency_map`
 
-  Ex. `python3 testAlexNet.py -i imgs/car.jpg -m 0 -p Deconv_Car`
+  Ex. `python3 testAlexNet.py -i imgs/car.jpg -m 0 -p Deconv_Car -l rpc`
 - If `deconvolution` and `activation` are chosen, open tensorboard and choose the
   corresponding logdir to visualize images.
   If `saliency_map` are chosen, prefix_pos.jpg, prefix_neg.jpg, prefix_abs.jpg
