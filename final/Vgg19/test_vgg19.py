@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 import numpy as np
 import tensorflow as tf
-import os, utils, time, argparse, inspect
+import os, time, argparse, inspect
 from scipy.misc import imread, imresize
 from tf_cnnvis import *
 
