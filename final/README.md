@@ -17,6 +17,7 @@
   p.s.1 currently `AlexNet` is the only one that supports `saliency_map`
 
   p.s.2 Need to run `deconvolution` or `activation` once before running `saliency_map`
+
   Ex. `python3 testAlexNet.py -i imgs/car.jpg -m 0 -p Deconv_Car`
 - If `deconvolution` and `activation` are chosen, open tensorboard and choose the
   corresponding logdir to visualize images.
