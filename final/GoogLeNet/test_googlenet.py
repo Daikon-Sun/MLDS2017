@@ -9,6 +9,7 @@ from scipy.misc import imread, imresize
 with tf.gfile.FastGFile('tensorflow_inception_graph.pb', 'rb') as f:
   graph_def = tf.GraphDef()
   graph_def.ParseFromString(f.read())
+
 t_input = tf.placeholder(np.float32, name='input') # define the input tensor
 imagenet_mean = 117.0
 t_preprocessed = t_input-imagenet_mean
