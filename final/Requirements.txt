@@ -1,2 +1,3 @@
-for saliency-map:
-  termcolor, tabulate, msgpack-python, msgpack-numpy
+For saliency-map:
+  tensorpack, termcolor, tabulate, msgpack-python, msgpack-numpy
+  OpenCv with OpenCL support
