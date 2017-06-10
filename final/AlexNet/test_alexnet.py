@@ -292,7 +292,7 @@ else:
     cv2.imwrite(args.prefix+'_neg.jpg', neg_saliency * 255)
     # bgr
     abs_saliency = viz.intensity_to_rgb(abs_saliency, normalize=True)[:, :, ::-1]
-    cv2.imwrite(args.prefix+'_abs-saliency.jpg', abs_saliency)
+    cv2.imwrite(args.prefix+'_abs.jpg', abs_saliency)
 
     rsl = im * 0.2 + abs_saliency * 0.8
     cv2.imwrite(args.prefix+'_blended.jpg', rsl)
