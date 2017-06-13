@@ -186,10 +186,17 @@ def test_decoder(gen_config):
 
 def decoder(gen_config):
     vocab, rev_vocab, dev_set, train_set = prepare_data(gen_config)
+    #print('vocab = ', len(vocab))
+    #print('rev_vocab = ', len(rev_vocab))
+    #print('dev_set = ', len(dev_set))
+    #print('train_set = ', len(train_set))
     train_bucket_sizes = [len(train_set[b]) for b in xrange(len(gen_config.buckets))]
+    #print(train_bucket_sizes)
     train_total_size = float(sum(train_bucket_sizes))
+    print('total sz = ', train_total_size)
     train_buckets_scale = [sum(train_bucket_sizes[:i + 1]) / train_total_size
                            for i in xrange(len(train_bucket_sizes))]
+    #print(train_buckets_scale)
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     with tf.Session(config=config) as sess:
@@ -205,10 +212,14 @@ def decoder(gen_config):
                              if train_buckets_scale[i] > random_number_01])
             encoder_inputs, decoder_inputs, target_weights, batch_source_encoder, batch_source_decoder = \
                 model.get_batch(train_set, bucket_id, gen_config.batch_size)
+            #print('encoder_inputs = ', encoder_inputs)
+            #print('decoder_inputs = ', decoder_inputs)
+            #print('target_weights = ', target_weights)
+            #print('batch_source_encoder = ', batch_source_encoder)
+            #print('batch_source_decoder =', batch_source_decoder)
             _, _, out_logits = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id,
                                           forward_only=True)
-            tokens = []
-            resps = []
+            tokens, resps = [], []
             for seq in out_logits:
                 token = []
                 for t in seq:
@@ -224,14 +235,11 @@ def decoder(gen_config):
                     resps.append(seq[:gen_config.buckets[bucket_id][1]])
             for query, answer, resp in zip(batch_source_encoder, batch_source_decoder, resps):
                 answer_str = " ".join([str(rev_vocab[an]) for an in answer][:-1])
-                disc_train_answer.write(answer_str)
-                disc_train_answer.write("\n")
+                disc_train_answer.write(answer_str + '\n')
                 query_str = " ".join([str(rev_vocab[qu]) for qu in query])
-                disc_train_query.write(query_str)
-                disc_train_query.write("\n")
+                disc_train_query.write(query_str + '\n')
                 resp_str = " ".join([tf.compat.as_str(rev_vocab[output]) for output in resp])
-                disc_train_gen.write(resp_str)
-                disc_train_gen.write("\n")
+                disc_train_gen.write(resp_str + '\n')
             num_step += 1
         disc_train_gen.close()
         disc_train_query.close()

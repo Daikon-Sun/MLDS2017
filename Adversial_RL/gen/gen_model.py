@@ -137,7 +137,7 @@ class Seq2SeqModel(object):
         self.saver = tf.train.Saver(self.gen_variables)
 
     def step(self, session, encoder_inputs, decoder_inputs, target_weights,
-           bucket_id, forward_only=True, reward=1, mc_search=False, up_reward=False, debug=True):
+             bucket_id, forward_only=True, reward=1, mc_search=False, up_reward=False, debug=True):
         # Check if the sizes match.
         encoder_size, decoder_size = self.buckets[bucket_id]
         if len(encoder_inputs) != encoder_size:
@@ -188,6 +188,7 @@ class Seq2SeqModel(object):
     def get_batch(self, train_data, bucket_id, batch_size, type=0):
 
         encoder_size, decoder_size = self.buckets[bucket_id]
+        print(encoder_size, decoder_size)
         encoder_inputs, decoder_inputs = [], []
 
         # pad them if needed, reverse encoder inputs and add GO to decoder.
@@ -243,4 +244,8 @@ class Seq2SeqModel(object):
                     batch_weight[batch_idx] = 0.0
             batch_weights.append(batch_weight)
 
+        #print('encoder_inputs = ', np.array(encoder_inputs))
+        #print('decoder_inputs = ', np.array(decoder_inputs))
+        #print('batch_encoder_inputs = ', np.array(batch_encoder_inputs))
+        #print('batch_decoder_inputs = ', np.array(batch_decoder_inputs))
         return (batch_encoder_inputs, batch_decoder_inputs, batch_weights, batch_source_encoder, batch_source_decoder)
