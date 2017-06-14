@@ -18,7 +18,7 @@ class Hier_rnn_model(object):
         self.answer = []
         for i in range(buckets[-1][0]):
             self.query.append(tf.placeholder(dtype=tf.int32, shape=[None], name="query{0}".format(i)))
-        for i in xrange(buckets[-1][1]):
+        for i in range(buckets[-1][1]):
             self.answer.append(tf.placeholder(dtype=tf.int32, shape=[None], name="answer{0}".format(i)))
 
         self.target = tf.placeholder(dtype=tf.int64, shape=[None], name="target")
