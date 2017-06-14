@@ -159,7 +159,7 @@ def test_decoder(gen_config):
         sys.stdout.flush()
         sentence = sys.stdin.readline()
         while sentence:
-            token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), vocab)
+            token_ids = data_utils.sentence_to_token_ids(tf.compat.as_str(sentence), vocab)
             print("token_id: ", token_ids)
             bucket_id = len(gen_config.buckets) - 1
             for i, bucket in enumerate(gen_config.buckets):
@@ -205,7 +205,7 @@ def decoder(gen_config):
         disc_train_answer = open("train.answer", "w")
         disc_train_gen = open("train.gen", "w")
         num_step = 0
-        while num_step < 10000:
+        while num_step < 10:
             print("generating num_step: ", num_step)
             random_number_01 = np.random.random_sample()
             bucket_id = min([i for i in xrange(len(train_buckets_scale))

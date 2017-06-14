@@ -29,10 +29,10 @@ from tensorflow.python.platform import gfile
 import tensorflow as tf
 
 # Special vocabulary symbols - we always put them at the start.
-_PAD = b"_PAD"
-_GO = b"_GO"
-_EOS = b"_EOS"
-_UNK = b"_UNK"
+_PAD = "_PAD"
+_GO = "_GO"
+_EOS = "_EOS"
+_UNK = "_UNK"
 _START_VOCAB = [_PAD, _GO, _EOS, _UNK]
 
 PAD_ID = 0
@@ -42,7 +42,7 @@ UNK_ID = 3
 
 # Regular expressions used to tokenize.
 #_WORD_SPLIT = re.compile(b"([.,!?\"':;)(])")
-_DIGIT_RE = re.compile(b"\d")
+_DIGIT_RE = re.compile("\d")
 
 # URLs for WMT disc_data.
 _WMT_ENFR_TRAIN_URL = "http://www.statmt.org/wmt10/training-giga-fren.tar"
@@ -213,7 +213,7 @@ def sentence_to_token_ids(sentence, vocabulary,
   if not normalize_digits:
     return [vocabulary.get(w, UNK_ID) for w in words]
   # Normalize digits by 0 before looking words up in the vocabulary.
-  return [vocabulary.get(_DIGIT_RE.sub(b"0", w), UNK_ID) for w in words]
+  return [vocabulary.get(_DIGIT_RE.sub("0", w), UNK_ID) for w in words]
 
 
 def data_to_token_ids(data_path, target_path, vocabulary,
