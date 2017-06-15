@@ -27,6 +27,7 @@ from six.moves import urllib
 
 from tensorflow.python.platform import gfile
 import tensorflow as tf
+from nltk.tokenize import word_tokenize
 
 # Special vocabulary symbols - we always put them at the start.
 _PAD = "_PAD"
@@ -188,7 +189,7 @@ def initialize_vocabulary(vocabulary_path):
 
 
 def sentence_to_token_ids(sentence, vocabulary,
-                          tokenizer=None, normalize_digits=True):
+                          tokenizer=word_tokenize, normalize_digits=True):
   """Convert a string to list of integers representing token-ids.
 
   For example, a sentence "I have a dog" may become tokenized into
@@ -211,9 +212,9 @@ def sentence_to_token_ids(sentence, vocabulary,
   else:
     words = basic_tokenizer(sentence)
   if not normalize_digits:
-    return [vocabulary.get(w, UNK_ID) for w in words]
+    return [vocabulary.get(w.lower(), UNK_ID) for w in words]
   # Normalize digits by 0 before looking words up in the vocabulary.
-  return [vocabulary.get(_DIGIT_RE.sub("0", w), UNK_ID) for w in words]
+  return [vocabulary.get(_DIGIT_RE.sub("0", w.lower()), UNK_ID) for w in words]
 
 
 def data_to_token_ids(data_path, target_path, vocabulary,

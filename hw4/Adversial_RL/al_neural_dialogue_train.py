@@ -208,6 +208,7 @@ def al_train():
                 step_time, disc_loss, gen_loss, t_loss, batch_reward = 0.0, 0.0, 0.0, 0.0, 0.0
                 sys.stdout.flush()
 def main(_):
+    gens.test_file_decoder(gen_config, sys.argv[1], sys.argv[2])
     #step_1 training gen model
     #gen_pre_train()
     #model test
@@ -217,7 +218,7 @@ def main(_):
     #step_3 training disc model
     #disc_pre_train()
     #step_4 training al model
-    al_train()
+    #al_train()
     #model test
     #gen_test()
 if __name__ == "__main__":

@@ -63,8 +63,8 @@ class gen_config(object):
     batch_size = 128
     emb_dim = 512
     num_layers = 4
-    vocab_size = 50000
-    train_dir = "./gen_data/"
+    vocab_size = 30000
+    train_dir = "./Adversial_RL/gen_data/"
     name_model = "st_model"
     tensorboard_dir = "./tensorboard/gen_log/"
     name_loss = "gen_loss"

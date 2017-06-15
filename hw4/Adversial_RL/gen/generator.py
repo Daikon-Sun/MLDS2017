@@ -45,7 +45,9 @@ def create_model(session, gen_config, forward_only, name_scope, initializer=None
     with tf.variable_scope(name_or_scope=name_scope, initializer=initializer):
         model = seq2seq_model.Seq2SeqModel(gen_config,  name_scope=name_scope, forward_only=forward_only)
         gen_ckpt_dir = os.path.abspath(os.path.join(gen_config.train_dir, "checkpoints"))
+        print('gen_ckpt_dir', gen_ckpt_dir)
         ckpt = tf.train.get_checkpoint_state(gen_ckpt_dir)
+        print('model checkpoint = ', ckpt.model_checkpoint_path)
         if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
             print("Reading Gen model parameters from %s" % ckpt.model_checkpoint_path)
             model.saver.restore(session, ckpt.model_checkpoint_path)
@@ -183,6 +185,41 @@ def test_decoder(gen_config):
             print("> ", end="")
             sys.stdout.flush()
             sentence = sys.stdin.readline()
+
+def test_file_decoder(gen_config, input_file, output_file):
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    with tf.Session(config=config) as sess:
+        model = create_model(sess, gen_config, forward_only=True, name_scope=gen_config.name_model)
+        model.batch_size = 1
+        train_path = os.path.join(gen_config.train_dir, "chitchat.train")
+        voc_file_path = [train_path + ".answer", train_path + ".query"]
+        vocab_path = os.path.join(gen_config.train_dir, "vocab%d.all" % gen_config.vocab_size)
+        data_utils.create_vocabulary(vocab_path, voc_file_path, gen_config.vocab_size)
+        vocab, rev_vocab = data_utils.initialize_vocabulary(vocab_path)
+        with open(output_file, 'w') as fout:
+            with open(input_file, 'r') as fin:
+                for sent in fin:
+                    print(sent)
+                    token_ids = data_utils.sentence_to_token_ids(tf.compat.as_str(sent), vocab)
+                    print("token_id: ", token_ids)
+                    bucket_id = len(gen_config.buckets) - 1
+                    for i, bucket in enumerate(gen_config.buckets):
+                        if bucket[0] >= len(token_ids):
+                            bucket_id = i
+                            break
+                    else:
+                        print("Sentence truncated: %s", sentence)
+                    encoder_inputs, decoder_inputs, target_weights, _, _ = model.get_batch({bucket_id: [(token_ids, [1])]},
+                                                                 bucket_id, model.batch_size, type=0)
+                    _, _, output_logits = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id, True)
+
+                    outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
+                    if data_utils.EOS_ID in outputs:
+                        outputs = outputs[:outputs.index(data_utils.EOS_ID)]
+                    out_sent = " ".join([tf.compat.as_str(rev_vocab[output]) for output in outputs])
+                    fout.write(out_sent + '\n')
+                    print(out_sent)
 
 def decoder(gen_config):
     vocab, rev_vocab, dev_set, train_set = prepare_data(gen_config)
