@@ -404,6 +404,32 @@
   ，而將模型擴大之後，movie subtitles 的結果便有十分顯著的進步，幾乎所有的
   回應都有相當程度的貼近人話。可以推斷，movie subtitles 的資訊量較爲完整
   ，但也需要較大的模型。
+\item 在 Reinforcement Learning 的部分，由於我們 data 的量並不夠多，
+  加上 model pretrained 的部分也不夠多，以及我們的 RL model 是基於前兩句
+  來推測下一句，但實際上我們的資料是一句對一句，因此，模型實際上並不太正確。
+  而且當 Discriminator 更新次數比較少的時候，便會出現答非所問的現象，
+  這個現象在訓練越久便會越明顯！下表爲 Reinforcement Learning Generate 更新
+  次數與 Discriminator 更新次數爲 1:1 時的結果。 \\
+  \begin{tabular}{lll}
+    \hline
+    輸入句子            & 輸出回應        \\
+    \hline
+    \hline
+    how are you?        & head for bridge .          \\
+    \hline
+    how old are you?    & i didn't see her .         \\
+    \hline
+    Where are you from? & my russian boys .          \\
+    \hline
+    What's your name?   & william simpson . robert rath . \\
+    \hline
+    Sounds great!       & sally , kitchen .            \\
+    \hline
+    Looks funny!        & i 'm sorry ... lee lother 's a very ...     \\
+    \hline
+    What's that?        & i 'm getting . \\
+    \hline
+  \end{tabular}
 \end{enumerate}
 % End of Experiment
 
