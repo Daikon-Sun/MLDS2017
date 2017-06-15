@@ -263,7 +263,8 @@
     所產生的每個子句，都會以蒙地卡羅搜尋五次，以五次的平均作爲
     這個子句的 reward。最後，爲了讓 Generator 能持續產生好的句子，
     而不是突然找不到好的方向，每次 update 完 Discriminator 及
-    Generator 後，還會在 true data 上對 Generator 進行 update。
+    Generator 後，還會在 true data 上對 Generator 進行 update
+    (Teacher forcing)。
 \end{enumerate}
 \end{enumerate}
 % End of Model description
@@ -316,6 +317,33 @@
   \end{tabular} \\
   從上表可以看出，將短的句子去掉，可以使輸出更爲有趣，將長的句子去掉，可以加速
   訓練的過程，但由於句子的減少，單字量也必須減少，否則，會使模型無法訓練起來。
+
+\item 在 Reinforcement Learning 的模型中，雖然我們所參考的 paper
+  \footnote{Jiwei Li, 2017, Adversarial Learning for Neural Dialogue Generation}
+  中表示，Discriminator 與 Generator 更新的比例爲 5:1，但是我們發現
+  Generator 更新次數較多有利於讓 Generator 回答的結果較爲符合。
+  這是由於每次更新 Generator 都會做 Teacher Forcing，因此能使 Generator
+  產生更爲合理的句子。 \\
+  \begin{tabular}{lll}
+    \hline
+    輸入句子            & 輸出回應         \\
+    \hline
+    \hline
+    how are you?        &  fine , macaulay .            \\
+    \hline                                            
+    how old are you?    &  i 'm thirty-seven .         \\
+    \hline                                            
+    Where are you from? &  my russian \_UNK .          \\
+    \hline                                            
+    What's your name?   &  someone else . called me . \\
+    \hline                                            
+    Sounds great!       &  he 's eating the realm !   \\
+    \hline                                            
+    Looks funny!        &  you once you 're onto .    \\
+    \hline                                            
+    What's that?        &  half-red , half-black --   \\
+    \hline   
+  \end{tabular}
 \end{enumerate}
 % End of Improvement
 
@@ -430,6 +458,28 @@
     What's that?        & i 'm getting . \\
     \hline
   \end{tabular}
+\item 因爲 Generator 與 Discriminator 需要保持平衡的狀態，我們
+  所訓練出來的模型，所觀察到的 Reward per sentence 大致上維持在
+  0.4 左右。然而，如果去掉 Teacher Focing，則 Generator
+  即使在有 pretrain 的情況下，仍然很難獲得 Reward。
+  如 Figure~\ref{fig:tf} 所示，Reward 基本都維持一致。
+  但不確定原因爲何如 Figure~\ref{fig:tl} 所示 Teacher Loss
+  會上升。
+  \begin{figure}[!htb]
+    \centering
+    \minipage{0.5\textwidth}
+    \includegraphics[scale=0.5]{tf.png}
+    \caption{Reward}
+    \label{fig:tf}
+   \endminipage
+   \hfill
+    \centering
+    \minipage{0.5\textwidth}
+    \includegraphics[scale=0.5]{tl.png}
+    \caption{Teacher Loss}
+    \label{fig:tl}
+   \endminipage
+  \end{figure}
 \end{enumerate}
 % End of Experiment
 
@@ -438,13 +488,13 @@
 \centering
 \begin{tabular}{ |C{2cm}|C{10cm}| }
   \hline
-  孫凡耕 & \\
+  孫凡耕 & RL、分配組內工作、教導組員\\
   \hline
-  羅啟心 & \\
+  羅啟心 & 協助餘項事務\\
   \hline
-  郭子生 & \\
+  郭子生 & 協助餘項事務 \\
   \hline
-  許晉嘉 & Seq2Seq、統整撰寫報告、跑實驗\\
+  許晉嘉 & Seq2Seq、統整撰寫報告、跑實驗 \\
   \hline
 \end{tabular}
 \end{table}
