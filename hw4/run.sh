@@ -6,9 +6,8 @@ if [ "${1}" == "S2S" ]; then
   mkdir works/movie_subtitles/results
   cp MLDS_hw4_S2S_model/* works/movie_subtitles/nn_models
 
-  mv $2 works/movie_subtitles/data/test/test_set.txt
+  cp $2 works/movie_subtitles/data/test/test_set.txt
   python3 main.py --mode test --model_name movie_subtitles --size 512
-  #mv works/movie_subtitles/results/results_4_512_100000.txt $3
   cat works/movie_subtitles/results/results_4_512_100000.txt | awk 'NR%2==0' | cut -c 17- > $3
 else
   mkdir -p Adversial_RL/gen_data/checkpoints
