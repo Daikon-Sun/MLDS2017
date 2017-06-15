@@ -10,7 +10,6 @@ if [ "${1}" == "S2S" ]; then
   python3 main.py --mode test --model_name movie_subtitles --size 512
   cat works/movie_subtitles/results/results_4_512_100000.txt | awk 'NR%2==0' | cut -c 17- > $3
 else
-  mkdir -p Adversial_RL/gen_data/checkpoints
   git clone https://Daikon-Sun@gitlab.com/Daikon-Sun/MLDS_hw4_RL_model.git
   mv MLDS_hw4_RL_model Adversial_RL/gen_data
   python3 Adversial_RL/al_neural_dialogue_train.py ${2} ${3}
