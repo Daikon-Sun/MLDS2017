@@ -151,19 +151,15 @@ if args.method <= 1:
                              path_logdir=logdir, path_outdir=outdir)
 else:
   IMAGE_SIZE = 224
-  vgg = Vgg16()
   class Model(tp.ModelDesc):
     def _get_inputs(self):
       return [tp.InputDesc(tf.float32, (IMAGE_SIZE, IMAGE_SIZE, 3), 'image')]
 
     def _build_graph(self, inputs):
-      vgg.build(tf.expand_dims(inputs[0], 0))
-      G = tf.get_default_graph()
-      print(G.get_all_collection_keys())
-      orig_image = inputs[0]
       with tp.symbolic_functions.guided_relu():
-        logits = vgg.fc8
-        tp.symbolic_functions.saliency_map(logits, orig_image, name='saliency')
+        vgg = Vgg16()
+        vgg.build(tf.expand_dims(inputs[0], 0))
+        tp.symbolic_functions.saliency_map(vgg.fc8, inputs[0], name='saliency')
   def run(model_path, image_path):
     predictor = tp.OfflinePredictor(tp.PredictConfig(
       model=Model(),

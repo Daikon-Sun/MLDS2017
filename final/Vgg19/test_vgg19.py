@@ -1,9 +1,11 @@
 #!/usr/bin/python3
+import os, time, argparse, inspect, cv2
 import numpy as np
 import tensorflow as tf
-import os, time, argparse, inspect
 from scipy.misc import imread, imresize
 from tf_cnnvis import *
+import tensorpack as tp
+import tensorpack.utils.viz as viz
 
 VGG_MEAN = [103.939, 116.779, 123.68]
 
@@ -128,9 +130,6 @@ class Vgg19:
   def get_fc_weight(self, name):
     return tf.constant(self.data_dict[name][0], name="weights")
 
-X = tf.placeholder(tf.float32, shape = [None, 224, 224, 3])
-vgg = Vgg19()
-vgg.build(X)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--prefix', '-p', type=str, default='',
@@ -138,7 +137,7 @@ parser.add_argument('--prefix', '-p', type=str, default='',
 parser.add_argument('--layers', '-l', type=str, default='rpc',
                     help='layers to be visualized')
 parser.add_argument('--method', '-m', type=int, default=0,
-                    choices=(0, 1), help='methods to visualize')
+                    choices=(0, 1, 2), help='methods to visualize')
 parser.add_argument('--image', '-i', type=str, default='NULL',
                     help='input image')
 args = parser.parse_args()
@@ -147,12 +146,56 @@ logdir = args.prefix+'_Log'
 outdir = args.prefix+'_Output'
 im = np.expand_dims(imresize(imresize(imread(args.image), (256, 256)), (224, 224)), axis = 0)
 
-visual_func = [deconv_visualization, activation_visualization]
+if args.method <= 1:
+  X = tf.placeholder(tf.float32, shape = [None, 224, 224, 3])
+  vgg = Vgg19()
+  vgg.build(X)
+  visual_func = [deconv_visualization, activation_visualization]
+  is_success =\
+    visual_func[args.method](graph_or_path=tf.get_default_graph(),
+                             value_feed_dict={X : im}, layers=layers,
+                             path_logdir=logdir, path_outdir=outdir)
+else:
+  IMAGE_SIZE = 224
+  class Model(tp.ModelDesc):
+    def _get_inputs(self):
+      return [tp.InputDesc(tf.float32, (IMAGE_SIZE, IMAGE_SIZE, 3), 'image')]
 
-start = time.time()
-is_success =\
-  visual_func[args.method](graph_or_path=tf.get_default_graph(),
-                           value_feed_dict={X : im}, layers=layers,
-                           path_logdir=logdir, path_outdir=outdir)
-start = time.time() - start
-print("Total Time = %f" % (start))
+    def _build_graph(self, inputs):
+      with tp.symbolic_functions.guided_relu():
+        vgg = Vgg19()
+        vgg.build(tf.expand_dims(inputs[0], 0))
+        tp.symbolic_functions.saliency_map(vgg.fc8, inputs[0], name='saliency')
+  def run(model_path, image_path):
+    predictor = tp.OfflinePredictor(tp.PredictConfig(
+      model=Model(),
+      session_init=tp.get_model_loader(model_path),
+      input_names=['image'],
+      output_names=['saliency']))
+    im = cv2.imread(image_path)
+    assert im is not None and im.ndim == 3, image_path
+
+    # resnet expect RGB inputs of 224x224x3
+    im = cv2.resize(im, (IMAGE_SIZE, IMAGE_SIZE))
+    im = im.astype(np.float32)[:, :, ::-1]
+
+    saliency_images = predictor([im])[0]
+
+    abs_saliency = np.abs(saliency_images).max(axis=-1)
+    pos_saliency = np.maximum(0, saliency_images)
+    neg_saliency = np.maximum(0, -saliency_images)
+
+    pos_saliency -= pos_saliency.min()
+    pos_saliency /= pos_saliency.max()
+    cv2.imwrite(args.prefix+'_pos.jpg', pos_saliency * 255)
+
+    neg_saliency -= neg_saliency.min()
+    neg_saliency /= neg_saliency.max()
+    cv2.imwrite(args.prefix+'_neg.jpg', neg_saliency * 255)
+    # bgr
+    abs_saliency = viz.intensity_to_rgb(abs_saliency, normalize=True)[:, :, ::-1]
+    cv2.imwrite(args.prefix+'_abs-saliency.jpg', abs_saliency)
+
+    rsl = im * 0.2 + abs_saliency * 0.8
+    cv2.imwrite(args.prefix+'_blended.jpg', rsl)
+  run('vgg19.npy', args.image)
