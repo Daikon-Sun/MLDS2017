@@ -196,4 +196,4 @@ else:
 
     rsl = im * 0.2 + abs_saliency * 0.8
     cv2.imwrite(args.prefix+'_blended.jpg', rsl)
-  run('model/tmp-model', args.image)
+  run('vgg16.npy', args.image)
