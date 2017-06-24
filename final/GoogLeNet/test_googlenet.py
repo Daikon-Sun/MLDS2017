@@ -7,6 +7,8 @@ from subprocess import call
 from scipy.misc import imread, imresize
 import tensorpack as tp
 import tensorpack.utils.viz as viz
+import tensorflow.contrib.slim as slim
+from tensorflow.contrib.slim.nets import inception
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--prefix', '-p', type=str, default='',
@@ -48,13 +50,9 @@ else:
     def _build_graph(self, inputs):
       orig_image = inputs[0]
       with tp.symbolic_functions.guided_relu():
-        with tf.gfile.FastGFile('tensorflow_inception_graph.pb', 'rb') as f:
-          graph_def = tf.GraphDef()
-          graph_def.ParseFromString(f.read())
-        # define the input tensor
-        t_preprocessed = tf.expand_dims(orig_image - imagenet_mean, 0)
-        tf.import_graph_def(graph_def, {'input' : t_preprocessed})
-        logits = tf.get_default_graph().get_tensor_by_name('import/output2:0')
+        with slim.arg_scope(inception.inception_v1_arg_scope()):
+          image = tf.expand_dims(((orig_image / 255) - 0.5) * 2, 0)
+          logits, _ = inception.inception_v1(image, 1001, False)
         tp.symbolic_functions.saliency_map(logits, orig_image, name="saliency")
 
   def run(model_path, image_path):
@@ -66,7 +64,6 @@ else:
     im = cv2.imread(image_path)
     assert im is not None and im.ndim == 3, image_path
 
-    # resnet expect RGB inputs of 224x224x3
     im = cv2.resize(im, (IMAGE_SIZE, IMAGE_SIZE))
     im = im.astype(np.float32)[:, :, ::-1]
 
@@ -90,4 +87,4 @@ else:
     rsl = im * 0.2 + abs_saliency * 0.8
     cv2.imwrite(args.prefix+'_blended.jpg', rsl)
 
-  run('model/tmp-model', args.image)
+  run('ckpts/inception_v1.ckpt', args.image)
